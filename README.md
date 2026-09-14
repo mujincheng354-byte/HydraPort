@@ -9,7 +9,11 @@ Windows 10/11 的轻量端口管理桌面程序，使用 Windows IP Helper API �
 
 - Rust stable（MSVC x64 工具链）
 - Visual Studio Build Tools（提供 MSVC 链接器）
-- 可选：Windows SDK 的 `rc.exe`，用于把图标与清单编译进 exe（缺失时会退化为无图标构建，不影响功能）
+- Windows SDK 的 `rc.exe`：`build.rs` 用它把 `assets/app.rc` 编译进 exe，其中包含图标与
+  `assets/app.manifest`。缺了它构建仍会成功（只打一条 cargo warning），但图标和清单一起丢失，
+  代价远不止「没有自定义图标」——高 DPI 感知与 comctl32 v6 都只由清单声明，程序里没有对应的
+  运行时调用，因此界面会退回系统默认缩放（高分屏下发虚）与 v5 控件外观（表头排序箭头失效）。
+  发布构建请确认已装 Windows SDK。
 
 ## 运行与构建
 
@@ -19,7 +23,10 @@ cargo test
 cargo build --release
 ```
 
-生成文件位于 `target\release\port-manager.exe`。如需结束系统或其他用户的进程，请右键以管理员身份运行。
+生成文件位于 `target\release\port-manager.exe`。包名与 exe 文件名沿用开发文档 §4 的
+`port-manager`，产品名是 HydraPort，两者指同一个程序；exe 文件名同时是「开机自启」写进
+注册表的路径，改名会让已有的自启项失效，因此保持不动。如需结束系统或其他用户的进程，
+请右键以管理员身份运行。
 
 设置环境变量 `HYDRAPORT_LOG=1` 可启用文件日志，位置为 `%LOCALAPPDATA%\HydraPort\hydraport.log`；
 设为 `stderr` 则输出到标准错误。默认不写任何日志。
@@ -28,7 +35,7 @@ cargo build --release
 
 - TCP/UDP 监听端口列表：端口、协议、本地地址、状态、PID、进程名、进程路径
 - 搜索过滤（端口号、进程名、PID 模糊匹配，不区分大小写，输入即筛选）
-- 精确端口查询：输入端口号后点击「查询」，直接选中占用该端口的全部记录
+- 精确端口查询：输入端口号后点击「查询」，把列表过滤到该端口，状态栏报出命中记录数与进程数
 - 表格列排序（点击表头切换升序/降序，表头带排序箭头）
 - 多选：单击选中，`Ctrl + 单击` 追加/取消，`Shift + 单击` 区间选择
 - 双击行或右键「查看详情」：展示端口信息与进程详情（父进程、内存占用、启动时间、命令行）
@@ -88,7 +95,7 @@ cargo build --release
 
 ## 测试
 
-`cargo test` 共 38 个用例，覆盖：端口枚举与字段合法性、端口号与 IPv4 地址的字节序解析、
+`cargo test` 覆盖：端口枚举与字段合法性、端口号与 IPv4 地址的字节序解析、
 扫描结果有序性与刷新一致性、搜索与精确查询（命中/未命中/组合条件/下标正确性）、进程详情查询、
 结束普通进程与进程树、权限错误提示、路径比较、注册表读写往返与清理、剪贴板读写往返、
 字节数格式化、详情文本的字段完整性、托盘启动/停止与幂等关闭、托盘事件码往返、
@@ -220,8 +227,13 @@ egui + eframe，30 MB 在架构上就不可达，与业务代码写得多省无�
   `AllowDarkModeForWindow`）。Windows 的深色控件主题必须先把进程切到「允许深色」模式才会生效，
   而这一步没有公开 API。这两个序号自 Windows 10 1809 起一直存在且行为稳定，
   取不到时会静默降级（控件维持系统默认的浅色外观，功能不受影响），不会崩溃。
-  状态栏是其中唯一没有深色皮肤的控件，深色主题下它的三段改为自绘（`SBT_OWNERDRAW` + `WM_DRAWITEM`），
-  浅色主题下仍走系统默认外观。
+  标题栏走 `DWMWA_USE_IMMERSIVE_DARK_MODE`，列表视图与编辑框换 `DarkMode_Explorer` /
+  `DarkMode_CFD` 主题名即可。
+- **表头与状态栏这两个控件根本没有深色皮肤**，换主题名对它们无效——这不是上面那两个序号
+  取不到导致的降级，序号正常时同样如此。`SysHeader32` 既不认 `DarkMode_Explorer` 也不发
+  `NM_CUSTOMDRAW`，所以表头是子类化后自己画的（`table::install_header_subclass` +
+  `set_header_dark`）；状态栏的三段在深色下改为自绘（`SBT_OWNERDRAW` + `WM_DRAWITEM`），
+  浅色时两者都仍走系统默认外观。
 - 按钮（包括对话框里的复选框）没有官方深色主题，沿用系统外观；对话框里复选框的文字颜色
   由 `WM_CTLCOLORBTN` 单独指定，否则会是深色背景上的黑字。
 - 「关闭窗口时最小化到托盘」在托盘创建失败（例如资源管理器未运行）时会自动禁用，
