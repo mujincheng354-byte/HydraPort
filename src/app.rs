@@ -407,9 +407,11 @@ impl PortManagerApp {
         match event {
             TrayEvent::Show => ui::main_window::show(self),
             TrayEvent::Refresh => {
+                // refresh() 一条龙做完了：重新扫描、重建表格、刷新状态栏。
+                // 这里原先还跟着 rebuild_rows() 和 set_message(message.clone())，
+                // 但前者进来时 rows_dirty 已被清掉，是空转；后者把 message 原样写回去，
+                // 除了再刷一遍状态栏不产生任何变化。
                 self.refresh();
-                self.rebuild_rows();
-                self.set_message(self.message.clone());
             }
             TrayEvent::Exit => self.quit_requested = true,
         }

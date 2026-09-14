@@ -261,6 +261,8 @@ fn layout(app: &PortManagerApp) {
 
     let list_height = (height - toolbar_height - status_height).max(1);
     unsafe { MoveWindow(app.list, 0, toolbar_height, width, list_height, 1) };
+    // 表格宽度刚刚才定下来，最后一列要按新宽度重新拉满；列表视图自己不会做这件事
+    app.stretch_last_column();
 }
 
 impl PortManagerApp {

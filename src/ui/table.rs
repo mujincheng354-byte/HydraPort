@@ -268,29 +268,48 @@ impl PortManagerApp {
 
     /// 列宽自适应内容；最后一列吃掉剩余宽度，避免右侧留白。
     fn autosize_columns(&self) {
-        unsafe {
+        for index in 0..COLUMNS.len() {
             // 注意 LVM_SETCOLUMNWIDTH 返回的是成功与否，宽度要用 LVM_GETCOLUMNWIDTH 单独查
-            let mut total = 0;
-            for index in 0..COLUMNS.len() {
+            unsafe {
                 SendMessageW(
                     self.list,
                     LVM_SETCOLUMNWIDTH,
                     index,
                     LVSCW_AUTOSIZE_USEHEADER as isize,
-                );
-                total += SendMessageW(self.list, LVM_GETCOLUMNWIDTH, index, 0);
-            }
-            let (client_width, _) = crate::ui::client_size(self.list);
-            let last = COLUMNS.len() - 1;
-            if total < client_width as isize {
-                let current = SendMessageW(self.list, LVM_GETCOLUMNWIDTH, last, 0);
-                SendMessageW(
-                    self.list,
-                    LVM_SETCOLUMNWIDTH,
-                    last,
-                    current + (client_width as isize - total),
-                );
-            }
+                )
+            };
+        }
+        self.stretch_last_column();
+    }
+
+    /// 把最后一列拉到表格右边界，避免右侧留白。
+    ///
+    /// 之所以独立成一个方法，是因为它必须在**控件尺寸确定之后**补跑一次：启动时第一次
+    /// 填表发生在布局之前（`PortManagerApp::new` 里就 refresh 了），那一刻列表视图还是
+    /// 创建时的 0 宽，`LVSCW_AUTOSIZE_USEHEADER` 算出的「剩余宽度」没有意义，最后一列
+    /// 只会拿到内容宽度；而列表视图并不会因为事后被 `MoveWindow` 放大就重新分配列宽，
+    /// 于是这块空白会一直留到用户手动拖列为止。所以 `layout()` 每次排完版都要再调一次。
+    pub(crate) fn stretch_last_column(&self) {
+        let (client_width, _) = crate::ui::client_size(self.list);
+        if client_width <= 0 {
+            return;
+        }
+        let mut total = 0;
+        for index in 0..COLUMNS.len() {
+            total += unsafe { SendMessageW(self.list, LVM_GETCOLUMNWIDTH, index, 0) };
+        }
+        if total >= client_width as isize {
+            return;
+        }
+        let last = COLUMNS.len() - 1;
+        unsafe {
+            let current = SendMessageW(self.list, LVM_GETCOLUMNWIDTH, last, 0);
+            SendMessageW(
+                self.list,
+                LVM_SETCOLUMNWIDTH,
+                last,
+                current + (client_width as isize - total),
+            );
         }
     }
 

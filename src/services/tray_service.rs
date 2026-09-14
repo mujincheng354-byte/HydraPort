@@ -27,13 +27,14 @@ use windows_sys::Win32::{
             Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
         },
         WindowsAndMessaging::{
-            AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-            DispatchMessageW, GetCursorPos, GetMessageW, GetSystemMetrics, LoadImageW,
-            PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-            SetForegroundWindow, TrackPopupMenu, TranslateMessage, HMENU, IDI_APPLICATION,
-            IMAGE_ICON, LR_DEFAULTCOLOR, MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON, SM_CYSMICON,
-            TPM_BOTTOMALIGN, TPM_RIGHTBUTTON, WM_APP, WM_COMMAND, WM_CONTEXTMENU, WM_DESTROY,
-            WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW, WS_POPUP,
+            AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
+            DestroyMenu, DestroyWindow, DispatchMessageW, GetCursorPos, GetMessageW,
+            GetSystemMetrics, LoadImageW, PostMessageW, PostQuitMessage, RegisterClassW,
+            RegisterWindowMessageW, SetForegroundWindow, TrackPopupMenu, TranslateMessage, HMENU,
+            IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, MF_SEPARATOR, MF_STRING, MSG,
+            SM_CXSMICON, SM_CYSMICON, TPM_BOTTOMALIGN, TPM_RIGHTBUTTON, WM_APP, WM_COMMAND,
+            WM_CONTEXTMENU, WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP,
+            WNDCLASSW, WS_POPUP,
         },
     },
 };
@@ -96,6 +97,12 @@ thread_local! {
     static STATE: RefCell<Option<Arc<Shared>>> = const { RefCell::new(None) };
     /// Explorer 广播的 `TaskbarCreated` 消息号（0 表示尚未注册）
     static TASKBAR_CREATED: Cell<u32> = const { Cell::new(0) };
+    /// 当前持有的托盘图标句柄，空表示尚未加载。
+    ///
+    /// 图标必须留住而不能随用随丢：[`load_tray_icon`] 调 `LoadImageW` 时没带
+    /// `LR_SHARED`，拿到的是进程私有的副本，谁加载谁负责 `DestroyIcon`。而 Explorer
+    /// 每次重启都会重新添加一遍图标，若那时再加载一次，旧句柄就再没人认领了。
+    static ICON: Cell<HANDLE> = const { Cell::new(ptr::null_mut()) };
 }
 
 /// 托盘服务句柄。析构时会自动移除图标。
@@ -228,7 +235,14 @@ unsafe fn create_tray_window(shared: &Shared) -> bool {
     TASKBAR_CREATED
         .with(|slot| slot.set(RegisterWindowMessageW(to_wide("TaskbarCreated").as_ptr())));
 
-    add_icon(window)
+    if add_icon(window) {
+        return true;
+    }
+    // 添加失败就没什么可做的了，但窗口已经建出来，得自己收掉：销毁会走 WM_DESTROY，
+    // 那条路径顺手把刚加载的图标也释放了。不能直接返回——线程一退出，
+    // 这个窗口和图标就再没人认领
+    DestroyWindow(window);
+    false
 }
 
 /// 向通知区域添加图标。
@@ -239,7 +253,7 @@ unsafe fn add_icon(window: HWND) -> bool {
     data.uID = 1;
     data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     data.uCallbackMessage = WM_TRAY_CALLBACK;
-    data.hIcon = load_tray_icon();
+    data.hIcon = tray_icon();
     let tip = to_wide("端口管理工具");
     let length = tip.len().min(data.szTip.len());
     data.szTip[..length].copy_from_slice(&tip[..length]);
@@ -249,7 +263,31 @@ unsafe fn add_icon(window: HWND) -> bool {
     added
 }
 
+/// 取出托盘图标，首次调用时加载。
+///
+/// 句柄缓存在 [`ICON`] 里：Explorer 重启会再走一遍 [`add_icon`]，那时复用同一个句柄，
+/// 既不重复加载也不丢句柄。真正的释放交给 [`destroy_tray_icon`]。
+unsafe fn tray_icon() -> HANDLE {
+    let cached = ICON.with(|slot| slot.get());
+    if !cached.is_null() {
+        return cached;
+    }
+    let icon = load_tray_icon();
+    ICON.with(|slot| slot.set(icon));
+    icon
+}
+
+/// 释放 [`tray_icon`] 加载的图标。重复调用无副作用。
+unsafe fn destroy_tray_icon() {
+    let icon = ICON.with(|slot| slot.replace(ptr::null_mut()));
+    if !icon.is_null() {
+        DestroyIcon(icon);
+    }
+}
+
 /// 载入托盘图标：优先使用嵌入到 exe 里的图标（资源 ID 为 1），失败时退回系统默认图标。
+///
+/// 返回值由调用方负责销毁，见 [`tray_icon`]。
 unsafe fn load_tray_icon() -> HANDLE {
     let instance = GetModuleHandleW(ptr::null());
     let width = GetSystemMetrics(SM_CXSMICON);
@@ -364,6 +402,9 @@ unsafe fn remove_icon(window: HWND) {
     data.hWnd = window;
     data.uID = 1;
     Shell_NotifyIconW(NIM_DELETE, &data);
+    // `NIM_DELETE` 只是把图标从通知区域摘下来，图标本身仍在进程里：它是
+    // `LoadImageW` 出来的私有副本，系统不会替我们回收，得自己销毁
+    destroy_tray_icon();
 }
 
 /// 把事件交给上层回调。
