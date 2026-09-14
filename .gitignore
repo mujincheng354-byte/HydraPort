@@ -1,0 +1,9 @@
+# 构建产物。写成不带前导斜杠的 `target/`，这样 scripts/bench/target 也一并忽略，
+# 不必为每个子工程再补一条。
+target/
+
+# 编辑器与系统临时文件
+*.swp
+*~
+Thumbs.db
+desktop.ini

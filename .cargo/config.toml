@@ -1,0 +1,10 @@
+# 静态链接 C 运行库，让 exe 真正做到「单文件发布」（开发文档 §1.3、§10）。
+#
+# Rust 在 x86_64-pc-windows-msvc 上默认动态链接 CRT，产物会依赖 VCRUNTIME140.dll /
+# VCRUNTIME140_1.dll——它们不属于系统组件，目标机器没装 VC++ 可再发行组件时程序直接
+# 起不来（ucrtbase.dll 是 Windows 10 起的系统组件，可以照常依赖）。
+#
+# 代价是二进制大约增加 96 KB（552 KB -> 648 KB），内存占用没有可测量的变化。
+# 如需退回动态链接，删掉这个文件重新构建即可。
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -1,0 +1,26 @@
+[package]
+name = "win32-listview"
+version = "0.1.0"
+edition = "2021"
+description = "内存参照程序：原生 Win32 控件界面（不创建 OpenGL 上下文）"
+
+# 独立于主程序的小程序，只用来测量「不加载显卡驱动」时的内存下限。
+# 它不属于主 package，需要单独构建：
+#   cargo build --release --manifest-path scripts/bench/Cargo.toml
+[workspace]
+
+[dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Controls",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
