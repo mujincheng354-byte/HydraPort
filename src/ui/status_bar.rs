@@ -15,7 +15,7 @@ use windows_sys::Win32::{
     System::LibraryLoader::GetModuleHandleW,
     UI::{
         Controls::{
-            DRAWITEMSTRUCT, SBARS_SIZEGRIP, SB_SETPARTS, SB_SETTEXTW, SBT_OWNERDRAW,
+            DRAWITEMSTRUCT, SBARS_SIZEGRIP, SBT_OWNERDRAW, SB_SETPARTS, SB_SETTEXTW,
             STATUSCLASSNAMEW,
         },
         WindowsAndMessaging::{CreateWindowExW, SendMessageW, WS_CHILD, WS_VISIBLE},
@@ -75,7 +75,11 @@ fn apply_edges(status: HWND, parent: HWND) {
     let (width, _) = ui::client_size(parent);
     let mut edges = [0i32; PART_COUNT];
     for (slot, percent) in edges.iter_mut().zip(PART_EDGES) {
-        *slot = if percent < 0 { -1 } else { width * percent / 100 };
+        *slot = if percent < 0 {
+            -1
+        } else {
+            width * percent / 100
+        };
     }
     unsafe { SendMessageW(status, SB_SETPARTS, PART_COUNT, edges.as_ptr() as isize) };
 }
@@ -127,7 +131,9 @@ pub(crate) fn draw_item(app: &PortManagerApp, item: &DRAWITEMSTRUCT) {
         return;
     }
     let index = item.itemID as usize;
-    let Some(text) = app.status_parts.get(index) else { return };
+    let Some(text) = app.status_parts.get(index) else {
+        return;
+    };
 
     let mut wide = to_wide(text);
     let mut rect = item.rcItem;
@@ -135,7 +141,14 @@ pub(crate) fn draw_item(app: &PortManagerApp, item: &DRAWITEMSTRUCT) {
     unsafe {
         FillRect(dc, &item.rcItem, app.background);
         SetBkMode(dc, TRANSPARENT as i32);
-        SetTextColor(dc, if app.dark_mode { ui::COLOR_DARK_TEXT } else { ui::COLOR_LIGHT_TEXT });
+        SetTextColor(
+            dc,
+            if app.dark_mode {
+                ui::COLOR_DARK_TEXT
+            } else {
+                ui::COLOR_LIGHT_TEXT
+            },
+        );
         DrawTextW(
             dc,
             wide.as_mut_ptr(),

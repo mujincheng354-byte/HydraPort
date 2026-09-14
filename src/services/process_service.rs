@@ -6,8 +6,13 @@ use sysinfo::{Pid, ProcessesToUpdate, System};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
     System::{
-        Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS},
-        Threading::{OpenProcess, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE},
+        Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+            TH32CS_SNAPPROCESS,
+        },
+        Threading::{
+            OpenProcess, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        },
     },
 };
 
@@ -33,12 +38,24 @@ impl ProcessService {
         // 只刷新目标进程，避免枚举全部进程带来的开销
         let mut system = System::new();
         system.refresh_processes(ProcessesToUpdate::Some(&[target]), true);
-        let process = system.process(target).ok_or_else(|| AppError::process_unavailable(pid))?;
+        let process = system
+            .process(target)
+            .ok_or_else(|| AppError::process_unavailable(pid))?;
 
-        let command_line = (!process.cmd().is_empty()).then(|| process.cmd().join(OsStr::new(" ")).to_string_lossy().into_owned());
+        let command_line = (!process.cmd().is_empty()).then(|| {
+            process
+                .cmd()
+                .join(OsStr::new(" "))
+                .to_string_lossy()
+                .into_owned()
+        });
         let started_at = process.start_time();
         // start_time 为 0 表示系统未提供该信息
-        let start_time = if started_at == 0 { None } else { DateTime::from_timestamp(started_at as i64, 0).map(|time| time.with_timezone(&Local)) };
+        let start_time = if started_at == 0 {
+            None
+        } else {
+            DateTime::from_timestamp(started_at as i64, 0).map(|time| time.with_timezone(&Local))
+        };
 
         Ok(ProcessDetail {
             name: process.name().to_string_lossy().into_owned(),
@@ -52,30 +69,50 @@ impl ProcessService {
     /// 结束指定进程；启用 `kill_tree` 时会先结束其所有子进程。
     pub fn kill_process(pid: u32, kill_tree: bool) -> Result<()> {
         if kill_tree {
-            for child_pid in Self::descendants(pid)? { Self::terminate(child_pid)?; }
+            for child_pid in Self::descendants(pid)? {
+                Self::terminate(child_pid)?;
+            }
         }
         Self::terminate(pid)
     }
 
     /// 在资源管理器中定位可执行文件。
     pub fn open_file_location(path: &str) -> Result<()> {
-        if path.is_empty() { return Err(AppError::InvalidPath.into()); }
-        Command::new("explorer.exe").arg(format!("/select,{path}")).spawn()?;
+        if path.is_empty() {
+            return Err(AppError::InvalidPath.into());
+        }
+        Command::new("explorer.exe")
+            .arg(format!("/select,{path}"))
+            .spawn()?;
         Ok(())
     }
 
     fn terminate(pid: u32) -> Result<()> {
-        let handle = unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
-        if handle.is_null() { return Err(AppError::permission_denied(format!("打开进程 {pid}")).into()); }
+        let handle = unsafe {
+            OpenProcess(
+                PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION,
+                0,
+                pid,
+            )
+        };
+        if handle.is_null() {
+            return Err(AppError::permission_denied(format!("打开进程 {pid}")).into());
+        }
         let result = unsafe { TerminateProcess(handle, 1) };
-        unsafe { CloseHandle(handle); }
-        if result == 0 { return Err(AppError::permission_denied(format!("结束进程 {pid}")).into()); }
+        unsafe {
+            CloseHandle(handle);
+        }
+        if result == 0 {
+            return Err(AppError::permission_denied(format!("结束进程 {pid}")).into());
+        }
         Ok(())
     }
 
     fn descendants(root_pid: u32) -> Result<Vec<u32>> {
         let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-        if snapshot == INVALID_HANDLE_VALUE { return Err(AppError::permission_denied("创建进程快照").into()); }
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err(AppError::permission_denied("创建进程快照").into());
+        }
         let mut entries = Vec::new();
         // PROCESSENTRY32W 未实现 Default，必须清零后再写入 dwSize
         let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
@@ -86,11 +123,16 @@ impl ProcessService {
             entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
             has_entry = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
         }
-        unsafe { CloseHandle(snapshot); }
+        unsafe {
+            CloseHandle(snapshot);
+        }
         let mut descendants = Vec::new();
         let mut parents = HashSet::from([root_pid]);
         while !parents.is_empty() {
-            let current: HashSet<u32> = entries.iter().filter_map(|(pid, parent)| parents.contains(parent).then_some(*pid)).collect();
+            let current: HashSet<u32> = entries
+                .iter()
+                .filter_map(|(pid, parent)| parents.contains(parent).then_some(*pid))
+                .collect();
             descendants.extend(current.iter().copied());
             parents = current;
         }
@@ -117,11 +159,20 @@ mod tests {
     /// 获取进程基本信息：查询自身应成功。
     #[test]
     fn get_process_info_of_self() {
-        let detail = ProcessService::get_process_info(std::process::id()).expect("查询自身进程失败");
+        let detail =
+            ProcessService::get_process_info(std::process::id()).expect("查询自身进程失败");
         // 服务返回的进程名应与测试程序自身的可执行文件名一致
         let expected = std::env::current_exe().expect("无法获取当前可执行文件路径");
-        let expected_name = expected.file_name().expect("可执行文件路径缺少文件名").to_string_lossy().to_lowercase();
-        assert_eq!(detail.name.to_lowercase(), expected_name, "进程名与可执行文件名不一致");
+        let expected_name = expected
+            .file_name()
+            .expect("可执行文件路径缺少文件名")
+            .to_string_lossy()
+            .to_lowercase();
+        assert_eq!(
+            detail.name.to_lowercase(),
+            expected_name,
+            "进程名与可执行文件名不一致"
+        );
         assert!(detail.memory_bytes > 0, "内存占用应为正数");
         assert!(detail.start_time.is_some(), "应能获取启动时间");
         assert!(detail.parent_pid.is_some(), "应能获取父进程 PID");
@@ -144,7 +195,10 @@ mod tests {
         ProcessService::kill_process(pid, false).expect("结束测试进程失败");
         let status = child.wait().expect("等待测试进程退出失败");
         assert!(!status.success(), "被强制结束的进程不应返回成功退出码");
-        assert!(ProcessService::get_process_info(pid).is_err(), "进程结束后不应再查询到");
+        assert!(
+            ProcessService::get_process_info(pid).is_err(),
+            "进程结束后不应再查询到"
+        );
     }
 
     /// 结束进程树：子进程应一并被结束。
@@ -170,7 +224,10 @@ mod tests {
             // 因此轮询等待而不是立即断言，否则测试会随机失败。
             let deadline = std::time::Instant::now() + Duration::from_secs(3);
             while ProcessService::get_process_info(child_pid).is_ok() {
-                assert!(std::time::Instant::now() < deadline, "子进程 {child_pid} 未被结束");
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "子进程 {child_pid} 未被结束"
+                );
                 std::thread::sleep(Duration::from_millis(50));
             }
         }
@@ -181,9 +238,13 @@ mod tests {
     fn kill_unopenable_process_reports_permission_hint() {
         // PID 0 为系统空闲进程、u32::MAX 附近为不存在的 PID，两者都无法打开
         for pid in [0, u32::MAX - 1] {
-            let error = ProcessService::kill_process(pid, false).expect_err("结束不存在的进程不应成功");
+            let error =
+                ProcessService::kill_process(pid, false).expect_err("结束不存在的进程不应成功");
             let message = format!("{error:#}");
-            assert!(message.contains("管理员"), "错误提示应引导用户以管理员身份运行，实际为：{message}");
+            assert!(
+                message.contains("管理员"),
+                "错误提示应引导用户以管理员身份运行，实际为：{message}"
+            );
         }
     }
 

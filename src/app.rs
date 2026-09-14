@@ -28,7 +28,11 @@ pub(crate) enum Protocol {
 
 impl Protocol {
     fn parse(value: &str) -> Self {
-        if value.eq_ignore_ascii_case("UDP") { Self::Udp } else { Self::Tcp }
+        if value.eq_ignore_ascii_case("UDP") {
+            Self::Udp
+        } else {
+            Self::Tcp
+        }
     }
 }
 
@@ -41,7 +45,11 @@ pub(crate) struct PortKey {
 }
 
 pub(crate) fn key_of(port: &PortInfo) -> PortKey {
-    PortKey { port: port.port, protocol: Protocol::parse(&port.protocol), pid: port.pid }
+    PortKey {
+        port: port.port,
+        protocol: Protocol::parse(&port.protocol),
+        pid: port.pid,
+    }
 }
 
 /// 表格可排序的列。
@@ -241,7 +249,11 @@ impl PortManagerApp {
                 SortColumn::Name => left.process_name.cmp(&right.process_name),
                 SortColumn::Path => left.process_path.cmp(&right.process_path),
             };
-            if self.descending { order.reverse() } else { order }
+            if self.descending {
+                order.reverse()
+            } else {
+                order
+            }
         });
         self.rows = rows;
         self.rows_dirty = false;
@@ -254,13 +266,22 @@ impl PortManagerApp {
     }
 
     pub(crate) fn toggle_sort(&mut self, column: SortColumn) {
-        if self.sort == column { self.descending = !self.descending; } else { self.sort = column; self.descending = false; }
+        if self.sort == column {
+            self.descending = !self.descending;
+        } else {
+            self.sort = column;
+            self.descending = false;
+        }
         self.mark_rows_dirty();
     }
 
     /// 当前选中的端口（在全量列表中查找，不受过滤条件影响）。
     pub(crate) fn selected_ports(&self) -> Vec<PortInfo> {
-        self.ports.iter().filter(|port| self.selected.contains(&key_of(port))).cloned().collect()
+        self.ports
+            .iter()
+            .filter(|port| self.selected.contains(&key_of(port)))
+            .cloned()
+            .collect()
     }
 
     /// 批量结束进程；同一 PID 只结束一次，并跳过本程序自身。
@@ -268,7 +289,9 @@ impl PortManagerApp {
         let current_pid = std::process::id();
         let mut pids: Vec<u32> = Vec::new();
         for port in ports {
-            if port.pid != current_pid && !pids.contains(&port.pid) { pids.push(port.pid); }
+            if port.pid != current_pid && !pids.contains(&port.pid) {
+                pids.push(port.pid);
+            }
         }
         if pids.is_empty() {
             self.set_message("没有可结束的进程".to_owned());
@@ -319,7 +342,9 @@ impl PortManagerApp {
         // csv 的序列化错误与 io 的 flush 错误类型不同，统一收敛为 anyhow::Error
         let result = (|| -> anyhow::Result<()> {
             let mut writer = csv::Writer::from_path(&path)?;
-            for item in self.filtered_ports() { writer.serialize(item)?; }
+            for item in self.filtered_ports() {
+                writer.serialize(item)?;
+            }
             writer.flush()?;
             Ok(())
         })();
@@ -354,7 +379,11 @@ impl PortManagerApp {
         match AutostartService::set_enabled(enabled) {
             Ok(()) => {
                 self.autostart = enabled;
-                self.set_message(if enabled { "已开启开机自启".to_owned() } else { "已关闭开机自启".to_owned() });
+                self.set_message(if enabled {
+                    "已开启开机自启".to_owned()
+                } else {
+                    "已关闭开机自启".to_owned()
+                });
                 log::info!("开机自启已{}", if enabled { "开启" } else { "关闭" });
             }
             Err(error) => {
@@ -398,7 +427,9 @@ impl PortManagerApp {
 
     /// 退出前清理托盘图标，避免通知区域留下残留。
     pub(crate) fn shutdown(&mut self) {
-        if let Some(tray) = self.tray.take() { tray.shutdown(); }
+        if let Some(tray) = self.tray.take() {
+            tray.shutdown();
+        }
         ui::delete_object(self.font as *mut _);
         ui::delete_object(self.background as *mut _);
         log::info!("程序退出");

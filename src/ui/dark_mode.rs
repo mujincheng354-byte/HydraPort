@@ -48,7 +48,10 @@ fn api() -> &'static Api {
         let module = LoadLibraryW(name.as_ptr());
         if module.is_null() {
             log::warn!("未能加载 uxtheme.dll，控件将不跟随深色主题");
-            return Api { set_preferred_app_mode: None, allow_dark_mode_for_window: None };
+            return Api {
+                set_preferred_app_mode: None,
+                allow_dark_mode_for_window: None,
+            };
         }
         Api {
             set_preferred_app_mode: resolve(module, SET_PREFERRED_APP_MODE),

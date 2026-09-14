@@ -29,7 +29,9 @@ impl AppError {
 
     /// 权限不足。
     pub fn permission_denied(action: impl Into<String>) -> Self {
-        Self::PermissionDenied { action: action.into() }
+        Self::PermissionDenied {
+            action: action.into(),
+        }
     }
 
     /// 是否为权限不足类错误；UI 用它决定是否给出「以管理员身份运行」的引导。
@@ -42,10 +44,15 @@ impl fmt::Display for AppError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             // 地址族 2 = IPv4，23 = IPv6，出错时提示具体是哪一张表失败
-            Self::PortQuery { family, code } => write!(formatter, "读取地址族 {family} 的端口表失败，错误代码：{code}"),
+            Self::PortQuery { family, code } => write!(
+                formatter,
+                "读取地址族 {family} 的端口表失败，错误代码：{code}"
+            ),
             Self::ProcessUnavailable { pid } => write!(formatter, "进程 {pid} 不存在或无权访问"),
             // 保持「管理员」字样：这是引导用户提权的关键提示
-            Self::PermissionDenied { action } => write!(formatter, "{action}失败；请尝试以管理员身份运行"),
+            Self::PermissionDenied { action } => {
+                write!(formatter, "{action}失败；请尝试以管理员身份运行")
+            }
             Self::InvalidPath => write!(formatter, "该进程没有可访问的文件路径"),
         }
     }
@@ -77,13 +84,18 @@ mod tests {
     #[test]
     fn converts_into_anyhow_and_back() {
         let error: anyhow::Error = AppError::port_query(23, 87).into();
-        assert!(error.downcast_ref::<AppError>().is_some(), "应能取回原始错误类型");
+        assert!(
+            error.downcast_ref::<AppError>().is_some(),
+            "应能取回原始错误类型"
+        );
         assert!(error.to_string().contains("87"));
     }
 
     /// 进程相关错误的提示应带上 PID，便于排查。
     #[test]
     fn process_error_mentions_the_pid() {
-        assert!(AppError::process_unavailable(1234).to_string().contains("1234"));
+        assert!(AppError::process_unavailable(1234)
+            .to_string()
+            .contains("1234"));
     }
 }

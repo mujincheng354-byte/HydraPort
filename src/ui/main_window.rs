@@ -9,15 +9,15 @@ use windows_sys::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
     Graphics::Gdi::{
         FillRect, InvalidateRect, RedrawWindow, ScreenToClient, SetBkColor, SetBkMode,
-        SetTextColor, UpdateWindow, HBRUSH, HDC, COLOR_WINDOW, RDW_ALLCHILDREN, RDW_ERASE,
+        SetTextColor, UpdateWindow, COLOR_WINDOW, HBRUSH, HDC, RDW_ALLCHILDREN, RDW_ERASE,
         RDW_INVALIDATE, TRANSPARENT,
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::{
         Controls::{
             InitCommonControlsEx, DRAWITEMSTRUCT, ICC_BAR_CLASSES, ICC_LISTVIEW_CLASSES,
-            ICC_STANDARD_CLASSES, INITCOMMONCONTROLSEX, LVN_COLUMNCLICK, LVN_ITEMCHANGED,
-            NM_CUSTOMDRAW, NM_DBLCLK, NM_RCLICK, NMHDR, NMLISTVIEW,
+            ICC_STANDARD_CLASSES, INITCOMMONCONTROLSEX, LVN_COLUMNCLICK, LVN_ITEMCHANGED, NMHDR,
+            NMLISTVIEW, NM_CUSTOMDRAW, NM_DBLCLK, NM_RCLICK,
         },
         HiDpi::AdjustWindowRectExForDpi,
         Input::KeyboardAndMouse::VK_F5,
@@ -31,8 +31,7 @@ use windows_sys::Win32::{
             LR_DEFAULTSIZE, LR_SHARED, MINMAXINFO, MSG, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER,
             SW_HIDE, SW_RESTORE, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLOREDIT,
             WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ERASEBKGND,
-            WM_GETMINMAXINFO,
-            WM_NCDESTROY, WM_NOTIFY, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+            WM_GETMINMAXINFO, WM_NCDESTROY, WM_NOTIFY, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
         },
     },
 };
@@ -54,8 +53,11 @@ const INITIAL_SIZE: (i32, i32) = (1100, 700);
 const MIN_SIZE: (i32, i32) = (720, 420);
 
 /// 全局加速键：F5 = 刷新。
-const ACCELERATORS: [ACCEL; 1] =
-    [ACCEL { fVirt: FVIRTKEY, key: VK_F5, cmd: ids::REFRESH_BUTTON as u16 }];
+const ACCELERATORS: [ACCEL; 1] = [ACCEL {
+    fVirt: FVIRTKEY,
+    key: VK_F5,
+    cmd: ids::REFRESH_BUTTON as u16,
+}];
 
 // 消息派发本身就是重入的：一个窗口过程里跑模态对话框，对话框的消息循环又能
 // 派发到本窗口；`DispatchMessageW` 期间控件也可能回调进来。只要有第二次取用，
@@ -90,7 +92,8 @@ fn app_mut<'a>(window: HWND) -> Option<(&'a mut PortManagerApp, AppBorrow)> {
         log::debug!("检测到窗口过程重入，本次消息按默认处理");
         return None;
     }
-    let app = unsafe { (GetWindowLongPtrW(window, GWLP_USERDATA) as *mut PortManagerApp).as_mut() }?;
+    let app =
+        unsafe { (GetWindowLongPtrW(window, GWLP_USERDATA) as *mut PortManagerApp).as_mut() }?;
     APP_BORROWS.with(|count| count.set(count.get() + 1));
     Some((app, AppBorrow))
 }
@@ -131,8 +134,14 @@ pub(crate) fn run() -> anyhow::Result<()> {
         window_class.style = CS_HREDRAW | CS_VREDRAW;
         window_class.lpfnWndProc = Some(window_procedure);
         window_class.hInstance = instance;
-        window_class.hIcon =
-            LoadImageW(instance, ICON_RESOURCE_ID as *const u16, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED);
+        window_class.hIcon = LoadImageW(
+            instance,
+            ICON_RESOURCE_ID as *const u16,
+            IMAGE_ICON,
+            0,
+            0,
+            LR_DEFAULTSIZE | LR_SHARED,
+        );
         window_class.hCursor = LoadCursorW(ptr::null_mut(), IDC_ARROW);
         window_class.hbrBackground = (COLOR_WINDOW + 1) as HBRUSH;
         window_class.lpszClassName = class_name.as_ptr();
@@ -142,7 +151,12 @@ pub(crate) fn run() -> anyhow::Result<()> {
 
         // 先按 96 DPI 的逻辑尺寸建窗，拿到窗口句柄后立刻按实际 DPI 调整
         let style = WS_OVERLAPPEDWINDOW;
-        let mut frame = RECT { left: 0, top: 0, right: INITIAL_SIZE.0, bottom: INITIAL_SIZE.1 };
+        let mut frame = RECT {
+            left: 0,
+            top: 0,
+            right: INITIAL_SIZE.0,
+            bottom: INITIAL_SIZE.1,
+        };
         AdjustWindowRectEx(&mut frame, style, 0, 0);
 
         let title = to_wide(WINDOW_TITLE);
@@ -199,9 +213,13 @@ pub(crate) fn run() -> anyhow::Result<()> {
 
         ShowWindow(window, SW_SHOW);
         UpdateWindow(window);
-        log::info!("主窗口已显示，启动耗时 {} ms", crate::utils::timing::elapsed_ms());
+        log::info!(
+            "主窗口已显示，启动耗时 {} ms",
+            crate::utils::timing::elapsed_ms()
+        );
 
-        let accelerators = CreateAcceleratorTableW(ACCELERATORS.as_ptr(), ACCELERATORS.len() as i32);
+        let accelerators =
+            CreateAcceleratorTableW(ACCELERATORS.as_ptr(), ACCELERATORS.len() as i32);
         let mut message: MSG = std::mem::zeroed();
         while GetMessageW(&mut message, ptr::null_mut(), 0, 0) > 0 {
             // 加速键要先于控件处理，否则 F5 会被当前获得焦点的控件吃掉。
@@ -277,7 +295,9 @@ pub(crate) fn hide(app: &PortManagerApp) {
 
 /// 打开当前选中行的详情窗口，并执行用户在窗口里选择的动作。
 fn show_detail(app: &mut PortManagerApp) {
-    let Some(port) = app.context_port() else { return };
+    let Some(port) = app.context_port() else {
+        return;
+    };
     match ui::dialogs::show_detail(app, &port) {
         DetailAction::None => {}
         DetailAction::OpenLocation => app.open_file_location(&port.process_path),
@@ -326,9 +346,18 @@ fn toggle_theme(app: &mut PortManagerApp) {
     ui::delete_object(previous as *mut _);
     unsafe {
         InvalidateRect(app.window, ptr::null(), 1);
-        RedrawWindow(app.window, ptr::null(), ptr::null_mut(), RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+        RedrawWindow(
+            app.window,
+            ptr::null(),
+            ptr::null_mut(),
+            RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
+        );
     }
-    app.set_message(if app.dark_mode { "已切换到深色主题".to_owned() } else { "已切换到浅色主题".to_owned() });
+    app.set_message(if app.dark_mode {
+        "已切换到深色主题".to_owned()
+    } else {
+        "已切换到浅色主题".to_owned()
+    });
 }
 
 /// 「查询」按钮的提示语：填了精确端口时额外说明有多少个进程在占用它。
@@ -341,7 +370,11 @@ fn query_message(app: &PortManagerApp) -> String {
             } else {
                 // 同一端口可能被多个协议或多个进程同时占用，去重后才好读
                 let pids: BTreeSet<u32> = hits.iter().map(|item| item.pid).collect();
-                format!("端口 {value} 命中 {} 条记录，来自 {} 个进程", hits.len(), pids.len())
+                format!(
+                    "端口 {value} 命中 {} 条记录，来自 {} 个进程",
+                    hits.len(),
+                    pids.len()
+                )
             }
         }
         None => format!("查询完成，显示 {} 条", app.rows.len()),
@@ -350,7 +383,9 @@ fn query_message(app: &PortManagerApp) -> String {
 
 /// 处理表格右键菜单的命令（菜单由 `table::show_table_menu` 弹出）。
 fn handle_table_menu(app: &mut PortManagerApp, command: usize) {
-    let Some(port) = app.context_port() else { return };
+    let Some(port) = app.context_port() else {
+        return;
+    };
     match command {
         ids::MENU_COPY_PORT => copy_text(app, "端口", &port.port.to_string()),
         ids::MENU_COPY_PID => copy_text(app, "PID", &port.pid.to_string()),
@@ -396,7 +431,10 @@ fn handle_command(app: &mut PortManagerApp, wparam: WPARAM) {
         id if id == ids::KILL_BUTTON => kill_selection(app),
         id if id == ids::THEME_BUTTON => toggle_theme(app),
         id if id == ids::SETTINGS_BUTTON => ui::toolbar::show_settings_menu(app),
-        ids::MENU_COPY_PORT | ids::MENU_COPY_PID | ids::MENU_DETAIL | ids::MENU_OPEN_LOCATION
+        ids::MENU_COPY_PORT
+        | ids::MENU_COPY_PID
+        | ids::MENU_DETAIL
+        | ids::MENU_OPEN_LOCATION
         | ids::MENU_KILL => handle_table_menu(app, id),
         _ => {}
     }
@@ -449,7 +487,12 @@ fn handle_notify(app: &mut PortManagerApp, lparam: LPARAM) -> LRESULT {
 }
 
 /// 主窗口过程。
-unsafe extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn window_procedure(
+    window: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     // 销毁时必须先把状态的所有权取回来，之后才能调用 &mut 方法
     if message == WM_NCDESTROY {
         let pointer = SetWindowLongPtrW(window, GWLP_USERDATA, 0) as *mut PortManagerApp;
@@ -475,7 +518,10 @@ unsafe extern "system" fn window_procedure(window: HWND, message: u32, wparam: W
         WM_GETMINMAXINFO => {
             let info = lparam as *mut MINMAXINFO;
             if !info.is_null() {
-                (*info).ptMinTrackSize = POINT { x: scale(MIN_SIZE.0, app.dpi), y: scale(MIN_SIZE.1, app.dpi) };
+                (*info).ptMinTrackSize = POINT {
+                    x: scale(MIN_SIZE.0, app.dpi),
+                    y: scale(MIN_SIZE.1, app.dpi),
+                };
             }
             0
         }
@@ -507,9 +553,7 @@ unsafe extern "system" fn window_procedure(window: HWND, message: u32, wparam: W
             handle_command(app, wparam);
             0
         }
-        WM_NOTIFY => {
-            handle_notify(app, lparam)
-        }
+        WM_NOTIFY => handle_notify(app, lparam),
         WM_TRAY_EVENT => {
             if let Some(event) = TrayEvent::from_code(wparam) {
                 app.handle_tray_event(event);
@@ -542,8 +586,22 @@ unsafe extern "system" fn window_procedure(window: HWND, message: u32, wparam: W
             let dc = wparam as HDC;
             if !dc.is_null() {
                 SetBkMode(dc, TRANSPARENT as i32);
-                SetTextColor(dc, if app.dark_mode { ui::COLOR_DARK_TEXT } else { ui::COLOR_LIGHT_TEXT });
-                SetBkColor(dc, if app.dark_mode { ui::COLOR_DARK_BG } else { ui::COLOR_LIGHT_BG });
+                SetTextColor(
+                    dc,
+                    if app.dark_mode {
+                        ui::COLOR_DARK_TEXT
+                    } else {
+                        ui::COLOR_LIGHT_TEXT
+                    },
+                );
+                SetBkColor(
+                    dc,
+                    if app.dark_mode {
+                        ui::COLOR_DARK_BG
+                    } else {
+                        ui::COLOR_LIGHT_BG
+                    },
+                );
             }
             app.background as isize
         }

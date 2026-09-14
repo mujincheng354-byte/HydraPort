@@ -12,7 +12,9 @@ use windows_sys::Win32::UI::Controls::Dialogs::{
 /// 弹出「另存为」对话框；用户取消时返回 `None`。
 pub fn save_file_dialog(default_name: &str) -> Option<PathBuf> {
     // 过滤器字符串的格式是「说明\0通配符\0说明\0通配符\0\0」，以双重 NUL 结尾
-    let filter: Vec<u16> = "CSV 文件\0*.csv\0所有文件\0*.*\0\0".encode_utf16().collect();
+    let filter: Vec<u16> = "CSV 文件\0*.csv\0所有文件\0*.*\0\0"
+        .encode_utf16()
+        .collect();
     let extension: Vec<u16> = "csv\0".encode_utf16().collect();
 
     // 缓冲区在返回时会被填入完整路径，必须先放入默认文件名
@@ -34,7 +36,10 @@ pub fn save_file_dialog(default_name: &str) -> Option<PathBuf> {
         return None;
     }
 
-    let length = buffer.iter().position(|unit| *unit == 0).unwrap_or(buffer.len());
+    let length = buffer
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(buffer.len());
     if length == 0 {
         return None;
     }

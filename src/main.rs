@@ -16,7 +16,10 @@ fn main() -> anyhow::Result<()> {
 
     let result = ui::run();
     match &result {
-        Ok(()) => log::info!("HydraPort 退出，总运行时长 {} ms", utils::timing::elapsed_ms()),
+        Ok(()) => log::info!(
+            "HydraPort 退出，总运行时长 {} ms",
+            utils::timing::elapsed_ms()
+        ),
         Err(error) => log::error!("HydraPort 异常退出：{error:#}"),
     }
     result

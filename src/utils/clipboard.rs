@@ -75,7 +75,9 @@ mod tests {
             Memory::{GlobalLock, GlobalUnlock},
         };
         unsafe {
-            if IsClipboardFormatAvailable(CF_UNICODETEXT) == 0 || OpenClipboard(std::ptr::null_mut()) == 0 {
+            if IsClipboardFormatAvailable(CF_UNICODETEXT) == 0
+                || OpenClipboard(std::ptr::null_mut()) == 0
+            {
                 return String::new();
             }
             let handle = GetClipboardData(CF_UNICODETEXT);

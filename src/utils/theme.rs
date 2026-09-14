@@ -8,7 +8,9 @@ use std::ptr;
 
 use windows_sys::Win32::{
     Foundation::ERROR_SUCCESS,
-    System::Registry::{HKEY, RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY_CURRENT_USER, KEY_READ},
+    System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
+    },
 };
 
 const KEY_PATH: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
@@ -26,7 +28,10 @@ pub fn system_uses_dark_theme() -> bool {
 /// 读取 `AppsUseLightTheme`；键或值不存在时返回 `None`。
 fn read_apps_use_light_theme() -> Option<u32> {
     let path: Vec<u16> = KEY_PATH.encode_utf16().chain(std::iter::once(0)).collect();
-    let name: Vec<u16> = VALUE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+    let name: Vec<u16> = VALUE_NAME
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
 
     unsafe {
         let mut key: HKEY = ptr::null_mut();
@@ -58,7 +63,10 @@ mod tests {
     #[test]
     fn reads_a_plausible_value() {
         if let Some(value) = read_apps_use_light_theme() {
-            assert!(value <= 1, "AppsUseLightTheme 只应是 0 或 1，实际为 {value}");
+            assert!(
+                value <= 1,
+                "AppsUseLightTheme 只应是 0 或 1，实际为 {value}"
+            );
         }
         // 无论读不读得到，都必须能给出一个确定答案
         let _ = system_uses_dark_theme();

@@ -11,10 +11,10 @@ use windows_sys::Win32::{
         Input::KeyboardAndMouse::EnableWindow,
         WindowsAndMessaging::{
             AppendMenuW, CheckMenuItem, CreatePopupMenu, CreateWindowExW, DestroyMenu,
-            EnableMenuItem, GetWindowRect, BS_PUSHBUTTON, ES_AUTOHSCROLL, MF_CHECKED, MF_GRAYED,
-            MF_SEPARATOR, MF_STRING, MoveWindow, PostMessageW, SetForegroundWindow, TrackPopupMenu,
-            TPM_RETURNCMD, TPM_RIGHTALIGN, WM_NULL, WS_CHILD, WS_EX_CLIENTEDGE, WS_TABSTOP,
-            WS_VISIBLE,
+            EnableMenuItem, GetWindowRect, MoveWindow, PostMessageW, SetForegroundWindow,
+            TrackPopupMenu, BS_PUSHBUTTON, ES_AUTOHSCROLL, MF_CHECKED, MF_GRAYED, MF_SEPARATOR,
+            MF_STRING, TPM_RETURNCMD, TPM_RIGHTALIGN, WM_NULL, WS_CHILD, WS_EX_CLIENTEDGE,
+            WS_TABSTOP, WS_VISIBLE,
         },
     },
 };
@@ -45,17 +45,77 @@ const SEARCH_LABEL: usize = 0;
 const EXACT_LABEL: usize = 1;
 
 const ITEMS: [Item; 10] = [
-    Item { id: ids::SEARCH_LABEL, class: "Static", text: "搜索：", width: None, right_aligned: false },
-    Item { id: ids::SEARCH_EDIT, class: "Edit", text: "", width: None, right_aligned: false },
-    Item { id: ids::EXACT_LABEL, class: "Static", text: "精确端口：", width: None, right_aligned: false },
-    Item { id: ids::EXACT_EDIT, class: "Edit", text: "", width: Some(EXACT_WIDTH), right_aligned: false },
-    Item { id: ids::QUERY_BUTTON, class: "Button", text: "查询", width: None, right_aligned: false },
-    Item { id: ids::REFRESH_BUTTON, class: "Button", text: "刷新", width: None, right_aligned: false },
-    Item { id: ids::EXPORT_BUTTON, class: "Button", text: "导出 CSV", width: None, right_aligned: false },
-    Item { id: ids::KILL_BUTTON, class: "Button", text: "结束选中进程", width: None, right_aligned: false },
+    Item {
+        id: ids::SEARCH_LABEL,
+        class: "Static",
+        text: "搜索：",
+        width: None,
+        right_aligned: false,
+    },
+    Item {
+        id: ids::SEARCH_EDIT,
+        class: "Edit",
+        text: "",
+        width: None,
+        right_aligned: false,
+    },
+    Item {
+        id: ids::EXACT_LABEL,
+        class: "Static",
+        text: "精确端口：",
+        width: None,
+        right_aligned: false,
+    },
+    Item {
+        id: ids::EXACT_EDIT,
+        class: "Edit",
+        text: "",
+        width: Some(EXACT_WIDTH),
+        right_aligned: false,
+    },
+    Item {
+        id: ids::QUERY_BUTTON,
+        class: "Button",
+        text: "查询",
+        width: None,
+        right_aligned: false,
+    },
+    Item {
+        id: ids::REFRESH_BUTTON,
+        class: "Button",
+        text: "刷新",
+        width: None,
+        right_aligned: false,
+    },
+    Item {
+        id: ids::EXPORT_BUTTON,
+        class: "Button",
+        text: "导出 CSV",
+        width: None,
+        right_aligned: false,
+    },
+    Item {
+        id: ids::KILL_BUTTON,
+        class: "Button",
+        text: "结束选中进程",
+        width: None,
+        right_aligned: false,
+    },
     // 靠右的项按这里的先后顺序从右往左摆，所以「设置」在最前、落在最右角
-    Item { id: ids::SETTINGS_BUTTON, class: "Button", text: "设置", width: None, right_aligned: true },
-    Item { id: ids::THEME_BUTTON, class: "Button", text: "浅色主题", width: None, right_aligned: true },
+    Item {
+        id: ids::SETTINGS_BUTTON,
+        class: "Button",
+        text: "设置",
+        width: None,
+        right_aligned: true,
+    },
+    Item {
+        id: ids::THEME_BUTTON,
+        class: "Button",
+        text: "浅色主题",
+        width: None,
+        right_aligned: true,
+    },
 ];
 
 /// 控件的垂直外边距（工具栏高度减去它即为控件高度）。
@@ -80,7 +140,10 @@ pub(crate) fn create(parent: HWND) -> anyhow::Result<ToolbarControls> {
         let text = to_wide(item.text);
         // 编辑框靠 WS_EX_CLIENTEDGE 才有可见边框；深色主题下输入区就靠这条边框区分
         let (style, ex_style) = match item.class {
-            "Edit" => (WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL as u32, WS_EX_CLIENTEDGE),
+            "Edit" => (
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL as u32,
+                WS_EX_CLIENTEDGE,
+            ),
             "Button" => (WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON as u32, 0),
             // SS_LEFT == 0，静态控件保持默认左对齐
             _ => (WS_CHILD | WS_VISIBLE, 0),
@@ -225,7 +288,11 @@ fn item_width(app: &PortManagerApp, item: &Item, control_height: i32) -> i32 {
 
 /// 主题按钮的当前文案。
 pub(crate) fn theme_button_text(app: &PortManagerApp) -> String {
-    if app.dark_mode { "浅色主题".to_owned() } else { "深色主题".to_owned() }
+    if app.dark_mode {
+        "浅色主题".to_owned()
+    } else {
+        "深色主题".to_owned()
+    }
 }
 
 impl PortManagerApp {
@@ -253,15 +320,38 @@ pub(crate) fn show_settings_menu(app: &mut PortManagerApp) {
     let copy_label = to_wide("复制日志文件路径");
 
     unsafe {
-        AppendMenuW(menu, MF_STRING, ids::MENU_CLOSE_TO_TRAY, close_label.as_mut_ptr());
-        AppendMenuW(menu, MF_STRING, ids::MENU_AUTOSTART, autostart_label.as_mut_ptr());
+        AppendMenuW(
+            menu,
+            MF_STRING,
+            ids::MENU_CLOSE_TO_TRAY,
+            close_label.as_mut_ptr(),
+        );
+        AppendMenuW(
+            menu,
+            MF_STRING,
+            ids::MENU_AUTOSTART,
+            autostart_label.as_mut_ptr(),
+        );
         AppendMenuW(menu, MF_SEPARATOR, 0, ptr::null());
-        AppendMenuW(menu, MF_STRING, ids::MENU_COPY_LOG_PATH, copy_label.as_ptr());
+        AppendMenuW(
+            menu,
+            MF_STRING,
+            ids::MENU_COPY_LOG_PATH,
+            copy_label.as_ptr(),
+        );
     }
     // 勾选状态
     unsafe {
-        CheckMenuItem(menu, ids::MENU_CLOSE_TO_TRAY as u32, if app.close_to_tray { MF_CHECKED } else { 0 });
-        CheckMenuItem(menu, ids::MENU_AUTOSTART as u32, if app.autostart { MF_CHECKED } else { 0 });
+        CheckMenuItem(
+            menu,
+            ids::MENU_CLOSE_TO_TRAY as u32,
+            if app.close_to_tray { MF_CHECKED } else { 0 },
+        );
+        CheckMenuItem(
+            menu,
+            ids::MENU_AUTOSTART as u32,
+            if app.autostart { MF_CHECKED } else { 0 },
+        );
         // 托盘创建失败时该项必须禁用，否则窗口一关就再也打不开
         if !tray_available {
             EnableMenuItem(menu, ids::MENU_CLOSE_TO_TRAY as u32, MF_GRAYED);
@@ -270,7 +360,12 @@ pub(crate) fn show_settings_menu(app: &mut PortManagerApp) {
 
     // 菜单贴在「设置」按钮的正下方，右边缘对齐——按钮本身就在窗口右侧，
     // 左对齐会让菜单探出窗口外
-    let mut rect = windows_sys::Win32::Foundation::RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    let mut rect = windows_sys::Win32::Foundation::RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
     unsafe { GetWindowRect(app.toolbar.settings, &mut rect) };
     let command = unsafe {
         SetForegroundWindow(app.window);
@@ -291,9 +386,11 @@ pub(crate) fn show_settings_menu(app: &mut PortManagerApp) {
     match command {
         ids::MENU_CLOSE_TO_TRAY => {
             app.close_to_tray = !app.close_to_tray;
-            app.set_message(
-                if app.close_to_tray { "关闭窗口时将最小化到托盘".to_owned() } else { "关闭窗口时将直接退出".to_owned() },
-            );
+            app.set_message(if app.close_to_tray {
+                "关闭窗口时将最小化到托盘".to_owned()
+            } else {
+                "关闭窗口时将直接退出".to_owned()
+            });
         }
         ids::MENU_AUTOSTART => {
             let enabled = !app.autostart;

@@ -11,7 +11,7 @@ use std::{fmt::Write as _, ptr};
 use windows_sys::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
     Graphics::Gdi::{
-        HBRUSH, HDC, HFONT, SetBkColor, SetBkMode, SetTextColor, ValidateRect, TRANSPARENT,
+        SetBkColor, SetBkMode, SetTextColor, ValidateRect, HBRUSH, HDC, HFONT, TRANSPARENT,
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::{
@@ -22,12 +22,12 @@ use windows_sys::Win32::{
             GetMessageW, GetWindowLongPtrW, GetWindowRect, IsDialogMessageW, LoadCursorW,
             MoveWindow, PostQuitMessage, RegisterClassW, SendMessageW, SetWindowLongPtrW,
             ShowWindow, TranslateMessage, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX,
-            BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CREATESTRUCTW, ES_AUTOVSCROLL, ES_MULTILINE,
-            DLGWINDOWEXTRA, ES_READONLY, GA_ROOT, GWLP_USERDATA, IDC_ARROW, IDCANCEL, IDOK, MSG,
-            SW_SHOW, WM_CLOSE,
-            WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_CREATE, WM_DESTROY,
-            WM_NCCREATE, WM_PAINT, WM_SIZE, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_DLGMODALFRAME,
-            WS_POPUP, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+            BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CREATESTRUCTW, DLGWINDOWEXTRA, ES_AUTOVSCROLL,
+            ES_MULTILINE, ES_READONLY, GA_ROOT, GWLP_USERDATA, IDCANCEL, IDC_ARROW, IDOK, MSG,
+            SW_SHOW, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLOREDIT,
+            WM_CTLCOLORSTATIC, WM_DESTROY, WM_NCCREATE, WM_PAINT, WM_SIZE, WNDCLASSW, WS_BORDER,
+            WS_CAPTION, WS_CHILD, WS_EX_DLGMODALFRAME, WS_POPUP, WS_SYSMENU, WS_TABSTOP,
+            WS_VISIBLE, WS_VSCROLL,
         },
     },
 };
@@ -76,7 +76,10 @@ const BST_CHECKED: isize = 1;
 /// 附加内存保存它自己的对话框状态（默认按钮、Tab 顺序等）。没有这段内存时它会读写
 /// 到窗口结构之外，并且对*任意*消息都返回非零——包括 `WM_PAINT`。那样消息循环会把
 /// 所有消息都当成「已处理」吞掉，窗口永远不重绘，同时 CPU 一个核跑满。
-fn ensure_class(name: &str, procedure: unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT) -> Vec<u16> {
+fn ensure_class(
+    name: &str,
+    procedure: unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT,
+) -> Vec<u16> {
     let class_name = to_wide(name);
     unsafe {
         let instance = GetModuleHandleW(ptr::null());
@@ -268,8 +271,22 @@ unsafe fn make_child(parent: HWND, class: &str, text: &str, style: u32, id: usiz
 unsafe fn paint_background(dc: HDC, dark: bool, background: HBRUSH) -> LRESULT {
     if !dc.is_null() {
         SetBkMode(dc, TRANSPARENT as i32);
-        SetTextColor(dc, if dark { ui::COLOR_DARK_TEXT } else { ui::COLOR_LIGHT_TEXT });
-        SetBkColor(dc, if dark { ui::COLOR_DARK_BG } else { ui::COLOR_LIGHT_BG });
+        SetTextColor(
+            dc,
+            if dark {
+                ui::COLOR_DARK_TEXT
+            } else {
+                ui::COLOR_LIGHT_TEXT
+            },
+        );
+        SetBkColor(
+            dc,
+            if dark {
+                ui::COLOR_DARK_BG
+            } else {
+                ui::COLOR_LIGHT_BG
+            },
+        );
     }
     background as isize
 }
@@ -324,12 +341,24 @@ pub(crate) fn show_detail(app: &PortManagerApp, port: &PortInfo) -> DetailAction
     let height = ui::scale(460, dpi);
     // SAFETY: 状态是独占的 Box，窗口过程只在消息循环期间借用它
     let state = unsafe {
-        run_modal(app.window, &class_name, "端口详情", Box::new(state), width, height)
+        run_modal(
+            app.window,
+            &class_name,
+            "端口详情",
+            Box::new(state),
+            width,
+            height,
+        )
     };
     state.map_or(DetailAction::None, |state| state.action)
 }
 
-unsafe extern "system" fn detail_procedure(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn detail_procedure(
+    window: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     match message {
         WM_NCCREATE => {
             if attach_state::<DetailState>(window, lparam) {
@@ -339,11 +368,19 @@ unsafe extern "system" fn detail_procedure(window: HWND, message: u32, wparam: W
             }
         }
         WM_CREATE => {
-            let Some(state) = state_of::<DetailState>(window) else { return -1 };
+            let Some(state) = state_of::<DetailState>(window) else {
+                return -1;
+            };
             // 详情文本一次性查好写进只读编辑框：既能滚动，也天然支持选中复制
             let text = readonly_text(&detail_text(&state.port));
             state.edit = make_child(window, "Edit", &text, READONLY_EDIT, detail_ids::TEXT);
-            state.open = make_child(window, "Button", "打开文件位置", PUSHBUTTON, detail_ids::OPEN);
+            state.open = make_child(
+                window,
+                "Button",
+                "打开文件位置",
+                PUSHBUTTON,
+                detail_ids::OPEN,
+            );
             state.kill = make_child(window, "Button", "结束进程", PUSHBUTTON, detail_ids::KILL);
             // 关闭按钮用 IDCANCEL，这样 Esc 也能关掉窗口
             state.close = make_child(window, "Button", "关闭", DEFPUSHBUTTON, IDCANCEL as usize);
@@ -360,7 +397,9 @@ unsafe extern "system" fn detail_procedure(window: HWND, message: u32, wparam: W
             0
         }
         WM_COMMAND => {
-            let Some(state) = state_of::<DetailState>(window) else { return 0 };
+            let Some(state) = state_of::<DetailState>(window) else {
+                return 0;
+            };
             match wparam & 0xFFFF {
                 id if id == detail_ids::OPEN => {
                     state.action = DetailAction::OpenLocation;
@@ -378,7 +417,9 @@ unsafe extern "system" fn detail_procedure(window: HWND, message: u32, wparam: W
             0
         }
         WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT => {
-            let Some(state) = state_of::<DetailState>(window) else { return 0 };
+            let Some(state) = state_of::<DetailState>(window) else {
+                return 0;
+            };
             paint_background(wparam as HDC, state.dark, state.background)
         }
         WM_CLOSE => {
@@ -403,12 +444,23 @@ fn layout_detail(window: HWND, state: &DetailState) {
 
     let edit_height = (height - margin * 3 - button_height).max(ui::scale(80, state.dpi));
     unsafe {
-        MoveWindow(state.edit, margin, margin, (width - margin * 2).max(1), edit_height, 1);
+        MoveWindow(
+            state.edit,
+            margin,
+            margin,
+            (width - margin * 2).max(1),
+            edit_height,
+            1,
+        );
 
         let y = margin + edit_height + margin;
         let mut right = width - margin;
         // 从右往左摆：关闭 / 结束进程 / 打开文件位置
-        for (handle, text) in [(state.close, "关闭"), (state.kill, "结束进程"), (state.open, "打开文件位置")] {
+        for (handle, text) in [
+            (state.close, "关闭"),
+            (state.kill, "结束进程"),
+            (state.open, "打开文件位置"),
+        ] {
             let button_width = ui::text_width(window, state.font, text) + ui::scale(26, state.dpi);
             right -= button_width;
             MoveWindow(handle, right, y, button_width, button_height, 1);
@@ -446,22 +498,37 @@ fn write_process(text: &mut String, detail: &ProcessDetail) {
     let _ = writeln!(
         text,
         "父进程 PID：{}",
-        detail.parent_pid.map_or_else(|| "未知".to_owned(), |pid| pid.to_string())
+        detail
+            .parent_pid
+            .map_or_else(|| "未知".to_owned(), |pid| pid.to_string())
     );
-    let _ = writeln!(text, "内存占用：{}", crate::utils::format_bytes(detail.memory_bytes));
+    let _ = writeln!(
+        text,
+        "内存占用：{}",
+        crate::utils::format_bytes(detail.memory_bytes)
+    );
     let _ = writeln!(
         text,
         "启动时间：{}",
-        detail
-            .start_time
-            .map_or_else(|| "未知".to_owned(), |time| time.format("%Y-%m-%d %H:%M:%S").to_string())
+        detail.start_time.map_or_else(
+            || "未知".to_owned(),
+            |time| time.format("%Y-%m-%d %H:%M:%S").to_string()
+        )
     );
-    let _ = writeln!(text, "命令行：{}", detail.command_line.as_deref().unwrap_or("（无法读取）"));
+    let _ = writeln!(
+        text,
+        "命令行：{}",
+        detail.command_line.as_deref().unwrap_or("（无法读取）")
+    );
 }
 
 /// 空字符串统一显示为「未知」，避免出现「进程名：」这样的空行。
 fn display_or_unknown(value: &str) -> &str {
-    if value.is_empty() { "（未知）" } else { value }
+    if value.is_empty() {
+        "（未知）"
+    } else {
+        value
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -530,7 +597,14 @@ pub(crate) fn confirm_kill(app: &mut PortManagerApp, targets: &[PortInfo]) -> bo
     let height = ui::scale(300, dpi);
     // SAFETY: 状态是独占的 Box，窗口过程只在消息循环期间借用它
     let state = unsafe {
-        run_modal(app.window, &class_name, "确认结束进程", Box::new(state), width, height)
+        run_modal(
+            app.window,
+            &class_name,
+            "确认结束进程",
+            Box::new(state),
+            width,
+            height,
+        )
     };
 
     match state {
@@ -542,7 +616,12 @@ pub(crate) fn confirm_kill(app: &mut PortManagerApp, targets: &[PortInfo]) -> bo
     }
 }
 
-unsafe extern "system" fn confirm_procedure(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn confirm_procedure(
+    window: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     match message {
         WM_NCCREATE => {
             if attach_state::<ConfirmState>(window, lparam) {
@@ -552,14 +631,37 @@ unsafe extern "system" fn confirm_procedure(window: HWND, message: u32, wparam: 
             }
         }
         WM_CREATE => {
-            let Some(state) = state_of::<ConfirmState>(window) else { return -1 };
+            let Some(state) = state_of::<ConfirmState>(window) else {
+                return -1;
+            };
             let text = readonly_text(&state.text);
             // 提示文本不需要参与 Tab 顺序，去掉 WS_TABSTOP
-            state.list = make_child(window, "Edit", &text, READONLY_EDIT & !WS_TABSTOP, confirm_ids::LIST);
-            state.tree = make_child(window, "Button", "同时结束其子进程", CHECKBOX, confirm_ids::TREE);
+            state.list = make_child(
+                window,
+                "Edit",
+                &text,
+                READONLY_EDIT & !WS_TABSTOP,
+                confirm_ids::LIST,
+            );
+            state.tree = make_child(
+                window,
+                "Button",
+                "同时结束其子进程",
+                CHECKBOX,
+                confirm_ids::TREE,
+            );
             state.ok = make_child(window, "Button", "确认结束", PUSHBUTTON, IDOK as usize);
             state.cancel = make_child(window, "Button", "取消", DEFPUSHBUTTON, IDCANCEL as usize);
-            SendMessageW(state.tree, BM_SETCHECK, if state.kill_tree { BST_CHECKED as usize } else { 0 }, 0);
+            SendMessageW(
+                state.tree,
+                BM_SETCHECK,
+                if state.kill_tree {
+                    BST_CHECKED as usize
+                } else {
+                    0
+                },
+                0,
+            );
             ui::apply_font(window, state.font);
             ui::apply_theme(window, state.dark);
             layout_confirm(window, state);
@@ -574,7 +676,9 @@ unsafe extern "system" fn confirm_procedure(window: HWND, message: u32, wparam: 
             0
         }
         WM_COMMAND => {
-            let Some(state) = state_of::<ConfirmState>(window) else { return 0 };
+            let Some(state) = state_of::<ConfirmState>(window) else {
+                return 0;
+            };
             match wparam & 0xFFFF {
                 id if id == confirm_ids::TREE => {
                     state.kill_tree = SendMessageW(state.tree, BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -592,7 +696,9 @@ unsafe extern "system" fn confirm_procedure(window: HWND, message: u32, wparam: 
         }
         // 复选框要一起处理：主题化的按钮文字用的是系统色，深色背景上会看不见
         WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT | WM_CTLCOLORBTN => {
-            let Some(state) = state_of::<ConfirmState>(window) else { return 0 };
+            let Some(state) = state_of::<ConfirmState>(window) else {
+                return 0;
+            };
             paint_background(wparam as HDC, state.dark, state.background)
         }
         WM_CLOSE => {
@@ -616,9 +722,24 @@ fn layout_confirm(window: HWND, state: &ConfirmState) {
     let check_height = ui::scale(22, state.dpi);
 
     unsafe {
-        let list_height = (height - margin * 3 - button_height - check_height).max(ui::scale(80, state.dpi));
-        MoveWindow(state.list, margin, margin, (width - margin * 2).max(1), list_height, 1);
-        MoveWindow(state.tree, margin, margin + list_height + gap, (width - margin * 2).max(1), check_height, 1);
+        let list_height =
+            (height - margin * 3 - button_height - check_height).max(ui::scale(80, state.dpi));
+        MoveWindow(
+            state.list,
+            margin,
+            margin,
+            (width - margin * 2).max(1),
+            list_height,
+            1,
+        );
+        MoveWindow(
+            state.tree,
+            margin,
+            margin + list_height + gap,
+            (width - margin * 2).max(1),
+            check_height,
+            1,
+        );
 
         let y = height - margin - button_height;
         let mut right = width - margin;
@@ -640,7 +761,10 @@ mod tests {
     fn readonly_text_uses_crlf() {
         let converted = readonly_text("第一行\n第二行");
         assert_eq!(converted, "第一行\r\n第二行");
-        assert!(!converted.replace("\r\n", "").contains('\n'), "仍存在未配对的 \\n");
+        assert!(
+            !converted.replace("\r\n", "").contains('\n'),
+            "仍存在未配对的 \\n"
+        );
     }
 
     /// `GetMessageW` 返回 0（WM_QUIT）或 -1（错误）时都必须结束模态循环，
@@ -674,10 +798,23 @@ mod tests {
             process_path: "C:\\test\\hydraport.exe".to_owned(),
         };
         let text = detail_text(&port);
-        for expected in ["端口：8080", "协议：TCP", "本地地址：0.0.0.0:8080", "状态：LISTENING", "PID：", "进程名："] {
-            assert!(text.contains(expected), "详情文本缺少「{expected}」：\n{text}");
+        for expected in [
+            "端口：8080",
+            "协议：TCP",
+            "本地地址：0.0.0.0:8080",
+            "状态：LISTENING",
+            "PID：",
+            "进程名：",
+        ] {
+            assert!(
+                text.contains(expected),
+                "详情文本缺少「{expected}」：\n{text}"
+            );
         }
         // 自身进程一定能查到，因此必然带出内存占用一行
-        assert!(text.contains("内存占用："), "自身进程的详情应包含内存占用：\n{text}");
+        assert!(
+            text.contains("内存占用："),
+            "自身进程的详情应包含内存占用：\n{text}"
+        );
     }
 }

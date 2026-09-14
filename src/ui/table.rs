@@ -12,24 +12,22 @@ use windows_sys::Win32::{
     System::LibraryLoader::GetModuleHandleW,
     UI::{
         Controls::{
-            HDF_SORTDOWN, HDF_SORTUP, HDI_FORMAT, HDI_TEXT, HDITEMW, HDM_GETITEMCOUNT,
-            HDM_GETITEMRECT, HDM_GETITEMW, HDM_SETITEMW, LVCF_FMT,
-            LVCF_SUBITEM, LVCF_TEXT, LVCF_WIDTH, LVCFMT_LEFT, LVCFMT_RIGHT, LVCOLUMNW,
-            LVHT_ONITEMICON, LVHT_ONITEMLABEL, LVHT_ONITEMSTATEICON, LVIF_STATE, LVIF_TEXT,
-            LVIS_SELECTED, LVITEMW, LVM_DELETEALLITEMS, LVM_GETCOLUMNWIDTH,
-            LVM_GETHEADER, LVM_GETNEXTITEM, LVM_INSERTCOLUMNW, LVM_INSERTITEMW,
-            LVM_SETCOLUMNWIDTH, LVM_SETEXTENDEDLISTVIEWSTYLE, LVM_SETITEMSTATE, LVM_SETITEMTEXTW,
-            LVM_SUBITEMHITTEST, LVNI_SELECTED, LVSCW_AUTOSIZE_USEHEADER, LVS_EX_DOUBLEBUFFER,
-            LVS_EX_FULLROWSELECT, LVS_EX_GRIDLINES, LVS_REPORT, LVS_SHOWSELALWAYS, LVHITTESTINFO,
-            WC_LISTVIEWW,
+            HDF_SORTDOWN, HDF_SORTUP, HDITEMW, HDI_FORMAT, HDI_TEXT, HDM_GETITEMCOUNT,
+            HDM_GETITEMRECT, HDM_GETITEMW, HDM_SETITEMW, LVCFMT_LEFT, LVCFMT_RIGHT, LVCF_FMT,
+            LVCF_SUBITEM, LVCF_TEXT, LVCF_WIDTH, LVCOLUMNW, LVHITTESTINFO, LVHT_ONITEMICON,
+            LVHT_ONITEMLABEL, LVHT_ONITEMSTATEICON, LVIF_STATE, LVIF_TEXT, LVIS_SELECTED, LVITEMW,
+            LVM_DELETEALLITEMS, LVM_GETCOLUMNWIDTH, LVM_GETHEADER, LVM_GETNEXTITEM,
+            LVM_INSERTCOLUMNW, LVM_INSERTITEMW, LVM_SETCOLUMNWIDTH, LVM_SETEXTENDEDLISTVIEWSTYLE,
+            LVM_SETITEMSTATE, LVM_SETITEMTEXTW, LVM_SUBITEMHITTEST, LVNI_SELECTED,
+            LVSCW_AUTOSIZE_USEHEADER, LVS_EX_DOUBLEBUFFER, LVS_EX_FULLROWSELECT, LVS_EX_GRIDLINES,
+            LVS_REPORT, LVS_SHOWSELALWAYS, WC_LISTVIEWW,
         },
         WindowsAndMessaging::{
-            CreateWindowExW, GetClientRect, SendMessageW, WM_GETFONT,
-            WS_CHILD, WS_TABSTOP, WS_VISIBLE,
+            CreateWindowExW, GetClientRect, SendMessageW, WM_GETFONT, WS_CHILD, WS_TABSTOP,
+            WS_VISIBLE,
         },
     },
 };
-
 
 /// 点在行的有效区域上（图标、文字或状态图标）才算命中该行。
 const LVHT_ONITEM: u32 = LVHT_ONITEMICON | LVHT_ONITEMLABEL | LVHT_ONITEMSTATEICON;
@@ -151,7 +149,12 @@ impl PortManagerApp {
             let mut sub: LVITEMW = std::mem::zeroed();
             sub.iSubItem = offset as i32 + 1;
             sub.pszText = text.as_mut_ptr();
-            SendMessageW(self.list, LVM_SETITEMTEXTW, inserted as usize, &sub as *const _ as isize);
+            SendMessageW(
+                self.list,
+                LVM_SETITEMTEXTW,
+                inserted as usize,
+                &sub as *const _ as isize,
+            );
         }
     }
 
@@ -167,7 +170,12 @@ impl PortManagerApp {
             item.state = LVIS_SELECTED;
             item.stateMask = LVIS_SELECTED;
             unsafe {
-                SendMessageW(self.list, LVM_SETITEMSTATE, position, &item as *const _ as isize);
+                SendMessageW(
+                    self.list,
+                    LVM_SETITEMSTATE,
+                    position,
+                    &item as *const _ as isize,
+                );
             }
         }
     }
@@ -181,7 +189,8 @@ impl PortManagerApp {
         // 先按「上一次的选中集合」判断有没有真变化，避免每次点击都重建整张表
         let unchanged = selected.len() == self.selected.len()
             && selected.iter().all(|position| {
-                self.selected.contains(&key_of(&self.ports[self.rows[*position]]))
+                self.selected
+                    .contains(&key_of(&self.ports[self.rows[*position]]))
             });
         if unchanged {
             return;
@@ -200,7 +209,14 @@ impl PortManagerApp {
         let mut result = Vec::new();
         let mut current: isize = -1;
         loop {
-            current = unsafe { SendMessageW(self.list, LVM_GETNEXTITEM, current as usize, LVNI_SELECTED as isize) };
+            current = unsafe {
+                SendMessageW(
+                    self.list,
+                    LVM_GETNEXTITEM,
+                    current as usize,
+                    LVNI_SELECTED as isize,
+                )
+            };
             if current < 0 {
                 break;
             }
@@ -216,7 +232,12 @@ impl PortManagerApp {
         item.state = 0;
         item.stateMask = LVIS_SELECTED;
         unsafe {
-            SendMessageW(self.list, LVM_SETITEMSTATE, usize::MAX, &item as *const _ as isize);
+            SendMessageW(
+                self.list,
+                LVM_SETITEMSTATE,
+                usize::MAX,
+                &item as *const _ as isize,
+            );
         }
     }
 
@@ -234,7 +255,11 @@ impl PortManagerApp {
                 SendMessageW(header, HDM_GETITEMW, index, &mut item as *mut _ as isize);
                 item.fmt &= !(HDF_SORTUP | HDF_SORTDOWN);
                 if index == sorted {
-                    item.fmt |= if self.descending { HDF_SORTDOWN } else { HDF_SORTUP };
+                    item.fmt |= if self.descending {
+                        HDF_SORTDOWN
+                    } else {
+                        HDF_SORTUP
+                    };
                 }
                 SendMessageW(header, HDM_SETITEMW, index, &item as *const _ as isize);
             }
@@ -247,14 +272,24 @@ impl PortManagerApp {
             // 注意 LVM_SETCOLUMNWIDTH 返回的是成功与否，宽度要用 LVM_GETCOLUMNWIDTH 单独查
             let mut total = 0;
             for index in 0..COLUMNS.len() {
-                SendMessageW(self.list, LVM_SETCOLUMNWIDTH, index, LVSCW_AUTOSIZE_USEHEADER as isize);
+                SendMessageW(
+                    self.list,
+                    LVM_SETCOLUMNWIDTH,
+                    index,
+                    LVSCW_AUTOSIZE_USEHEADER as isize,
+                );
                 total += SendMessageW(self.list, LVM_GETCOLUMNWIDTH, index, 0);
             }
             let (client_width, _) = crate::ui::client_size(self.list);
             let last = COLUMNS.len() - 1;
             if total < client_width as isize {
                 let current = SendMessageW(self.list, LVM_GETCOLUMNWIDTH, last, 0);
-                SendMessageW(self.list, LVM_SETCOLUMNWIDTH, last, current + (client_width as isize - total));
+                SendMessageW(
+                    self.list,
+                    LVM_SETCOLUMNWIDTH,
+                    last,
+                    current + (client_width as isize - total),
+                );
             }
         }
     }
@@ -262,19 +297,33 @@ impl PortManagerApp {
     /// 表格右键菜单（§7）。
     pub(crate) fn show_table_menu(&mut self, hit: POINT) {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
-            AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, MF_SEPARATOR, MF_STRING,
-            SetForegroundWindow, TrackPopupMenu, TPM_RIGHTBUTTON, WM_NULL, PostMessageW,
+            AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, PostMessageW,
+            SetForegroundWindow, TrackPopupMenu, MF_SEPARATOR, MF_STRING, TPM_RIGHTBUTTON, WM_NULL,
         };
 
         // 右键点在某一行上时，若该行未被选中则先只选中它——
         // 与资源管理器的行为一致，避免误操作到别的进程
-        let mut info = LVHITTESTINFO { pt: hit, flags: 0, iItem: -1, iSubItem: -1, iGroup: -1 };
-        unsafe { SendMessageW(self.list, LVM_SUBITEMHITTEST, 0, &mut info as *mut _ as isize) };
+        let mut info = LVHITTESTINFO {
+            pt: hit,
+            flags: 0,
+            iItem: -1,
+            iSubItem: -1,
+            iGroup: -1,
+        };
+        unsafe {
+            SendMessageW(
+                self.list,
+                LVM_SUBITEMHITTEST,
+                0,
+                &mut info as *mut _ as isize,
+            )
+        };
         if info.iItem >= 0 && (info.flags & LVHT_ONITEM) != 0 {
             let position = info.iItem as usize;
             if position < self.rows.len() && !self.selected_positions().contains(&position) {
                 self.selected.clear();
-                self.selected.insert(key_of(&self.ports[self.rows[position]]));
+                self.selected
+                    .insert(key_of(&self.ports[self.rows[position]]));
                 self.suppress_selection_events = true;
                 self.clear_table_selection();
                 self.suppress_selection_events = false;
@@ -287,7 +336,9 @@ impl PortManagerApp {
             return;
         }
 
-        let Some(port) = self.context_port() else { return };
+        let Some(port) = self.context_port() else {
+            return;
+        };
         let menu = unsafe { CreatePopupMenu() };
         if menu.is_null() {
             return;
@@ -313,7 +364,15 @@ impl PortManagerApp {
             GetCursorPos(&mut cursor);
             // TrackPopupMenu 要求窗口是前台窗口，否则点击别处时菜单不会消失
             SetForegroundWindow(self.window);
-            TrackPopupMenu(menu, TPM_RIGHTBUTTON, cursor.x, cursor.y, 0, self.window, ptr::null());
+            TrackPopupMenu(
+                menu,
+                TPM_RIGHTBUTTON,
+                cursor.x,
+                cursor.y,
+                0,
+                self.window,
+                ptr::null(),
+            );
             PostMessageW(self.window, WM_NULL, 0, 0);
             DestroyMenu(menu);
         }
@@ -324,7 +383,9 @@ impl PortManagerApp {
     pub(crate) fn context_port(&self) -> Option<crate::models::PortInfo> {
         let positions = self.selected_positions();
         let position = positions.first()?;
-        self.rows.get(*position).map(|index| self.ports[*index].clone())
+        self.rows
+            .get(*position)
+            .map(|index| self.ports[*index].clone())
     }
 }
 
@@ -388,9 +449,9 @@ unsafe extern "system" fn header_procedure(
 ) -> LRESULT {
     use windows_sys::Win32::{
         Graphics::Gdi::{
-            BeginPaint, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect, SelectObject,
-            SetBkMode, SetTextColor, DT_CENTER, DT_LEFT, DT_RIGHT, DT_SINGLELINE, DT_VCENTER,
-            PAINTSTRUCT,
+            BeginPaint, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect,
+            SelectObject, SetBkMode, SetTextColor, DT_CENTER, DT_LEFT, DT_RIGHT, DT_SINGLELINE,
+            DT_VCENTER, PAINTSTRUCT,
         },
         UI::WindowsAndMessaging::WM_PAINT,
     };
@@ -437,7 +498,13 @@ unsafe extern "system" fn header_procedure(
         // HDM_GETITEMRECT 给的是「文字行」的高度，不是整格；竖着要摊到整个客户区，
         // 否则标题会挤在顶部一条里，下面留一道空档。
         let mut cell: RECT = std::mem::zeroed();
-        if SendMessageW(window, HDM_GETITEMRECT, index as usize, &mut cell as *mut _ as isize) == 0 {
+        if SendMessageW(
+            window,
+            HDM_GETITEMRECT,
+            index as usize,
+            &mut cell as *mut _ as isize,
+        ) == 0
+        {
             continue;
         }
         cell.top = client.top;
@@ -448,7 +515,13 @@ unsafe extern "system" fn header_procedure(
         item.mask = HDI_TEXT | HDI_FORMAT;
         item.pszText = buffer.as_mut_ptr();
         item.cchTextMax = buffer.len() as i32;
-        if SendMessageW(window, HDM_GETITEMW, index as usize, &mut item as *mut _ as isize) == 0 {
+        if SendMessageW(
+            window,
+            HDM_GETITEMW,
+            index as usize,
+            &mut item as *mut _ as isize,
+        ) == 0
+        {
             continue;
         }
         let length = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
@@ -525,8 +598,7 @@ pub(crate) fn set_header_dark(list: HWND, dark: bool) {
 /// `NM_CUSTOMDRAW`（它只发 HDN_*），只能换掉窗口过程自己画。
 pub(crate) fn handle_custom_draw(app: &PortManagerApp, lparam: LPARAM) -> LRESULT {
     use windows_sys::Win32::UI::Controls::{
-        CDDS_ITEMPREPAINT, CDDS_PREPAINT, CDRF_DODEFAULT, CDRF_NOTIFYITEMDRAW,
-        NMLVCUSTOMDRAW,
+        CDDS_ITEMPREPAINT, CDDS_PREPAINT, CDRF_DODEFAULT, CDRF_NOTIFYITEMDRAW, NMLVCUSTOMDRAW,
     };
 
     // 浅色下一切照旧，交回给控件自己画

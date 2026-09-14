@@ -27,7 +27,8 @@ fn main() {
         return;
     };
 
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("缺少 CARGO_MANIFEST_DIR"));
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("缺少 CARGO_MANIFEST_DIR"));
     let assets = manifest_dir.join("assets");
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("缺少 OUT_DIR"));
     let resource = out_dir.join("app.res");
@@ -46,7 +47,9 @@ fn main() {
             // 链接器可以直接接受 .res 文件作为输入
             println!("cargo:rustc-link-arg-bins={}", resource.display());
         }
-        Ok(status) => println!("cargo:warning=rc.exe 编译资源失败（退出码 {status}），跳过图标与清单嵌入"),
+        Ok(status) => {
+            println!("cargo:warning=rc.exe 编译资源失败（退出码 {status}），跳过图标与清单嵌入")
+        }
         Err(error) => println!("cargo:warning=无法运行 rc.exe：{error}，跳过图标与清单嵌入"),
     }
 }
@@ -64,13 +67,20 @@ fn find_resource_compiler() -> Option<PathBuf> {
     let mut roots = Vec::new();
     for variable in ["ProgramFiles(x86)", "ProgramFiles"] {
         if let Some(root) = env::var_os(variable) {
-            roots.push(PathBuf::from(root).join("Windows Kits").join("10").join("bin"));
+            roots.push(
+                PathBuf::from(root)
+                    .join("Windows Kits")
+                    .join("10")
+                    .join("bin"),
+            );
         }
     }
 
     let mut candidates = Vec::new();
     for root in roots {
-        let Ok(versions) = std::fs::read_dir(&root) else { continue };
+        let Ok(versions) = std::fs::read_dir(&root) else {
+            continue;
+        };
         for version in versions.flatten() {
             for host in ["x64", "x86"] {
                 let candidate = version.path().join(host).join("rc.exe");
@@ -91,6 +101,11 @@ fn version_key(path: &Path) -> Vec<u32> {
     path.ancestors()
         .nth(2)
         .and_then(|dir| dir.file_name())
-        .map(|name| name.to_string_lossy().split('.').map(|part| part.parse().unwrap_or(0)).collect())
+        .map(|name| {
+            name.to_string_lossy()
+                .split('.')
+                .map(|part| part.parse().unwrap_or(0))
+                .collect()
+        })
         .unwrap_or_default()
 }

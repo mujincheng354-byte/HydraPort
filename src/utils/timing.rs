@@ -1,9 +1,6 @@
 //! 启动计时（§1.3 启动速度）。只记录一个进程内的起点，不参与业务逻辑。
 
-use std::{
-    sync::OnceLock,
-    time::Instant,
-};
+use std::{sync::OnceLock, time::Instant};
 
 /// 进程启动时刻；由 `main` 在最开始处打点。
 static START: OnceLock<Instant> = OnceLock::new();

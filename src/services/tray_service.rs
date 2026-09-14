@@ -23,15 +23,17 @@ use windows_sys::Win32::{
     Foundation::{HANDLE, HWND, LPARAM, LRESULT, POINT, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
     UI::{
-        Shell::{Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW},
+        Shell::{
+            Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
+        },
         WindowsAndMessaging::{
             AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-            DispatchMessageW, GetCursorPos, GetMessageW, GetSystemMetrics, LoadImageW, PostMessageW,
-            PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SetForegroundWindow,
-            TrackPopupMenu, TranslateMessage, HMENU, IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR,
-            MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON, SM_CYSMICON, TPM_BOTTOMALIGN, TPM_RIGHTBUTTON,
-            WM_APP, WM_COMMAND, WM_CONTEXTMENU, WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_NULL,
-            WM_RBUTTONUP, WNDCLASSW, WS_POPUP,
+            DispatchMessageW, GetCursorPos, GetMessageW, GetSystemMetrics, LoadImageW,
+            PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
+            SetForegroundWindow, TrackPopupMenu, TranslateMessage, HMENU, IDI_APPLICATION,
+            IMAGE_ICON, LR_DEFAULTCOLOR, MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON, SM_CYSMICON,
+            TPM_BOTTOMALIGN, TPM_RIGHTBUTTON, WM_APP, WM_COMMAND, WM_CONTEXTMENU, WM_DESTROY,
+            WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW, WS_POPUP,
         },
     },
 };
@@ -134,7 +136,11 @@ impl TrayService {
 
     /// 移除图标并结束托盘线程；重复调用无副作用。
     pub fn shutdown(&self) {
-        let window = *self.shared.window.lock().unwrap_or_else(|error| error.into_inner());
+        let window = *self
+            .shared
+            .window
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         if window != 0 {
             // 交给窗口过程移除图标并退出消息循环，避免跨线程直接动窗口
             unsafe { PostMessageW(window as HWND, WM_DESTROY, 0, 0) };
@@ -213,10 +219,14 @@ unsafe fn create_tray_window(shared: &Shared) -> bool {
     if window.is_null() {
         return false;
     }
-    *shared.window.lock().unwrap_or_else(|error| error.into_inner()) = window as isize;
+    *shared
+        .window
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = window as isize;
 
     // Explorer 重启后会广播这个自定义消息，收到后需要重新添加图标
-    TASKBAR_CREATED.with(|slot| slot.set(RegisterWindowMessageW(to_wide("TaskbarCreated").as_ptr())));
+    TASKBAR_CREATED
+        .with(|slot| slot.set(RegisterWindowMessageW(to_wide("TaskbarCreated").as_ptr())));
 
     add_icon(window)
 }
@@ -245,15 +255,34 @@ unsafe fn load_tray_icon() -> HANDLE {
     let width = GetSystemMetrics(SM_CXSMICON);
     let height = GetSystemMetrics(SM_CYSMICON);
     // 资源 ID 以指针形式传入（等价于 MAKEINTRESOURCE）
-    let icon = LoadImageW(instance, ICON_RESOURCE_ID as *const u16, IMAGE_ICON, width, height, LR_DEFAULTCOLOR);
+    let icon = LoadImageW(
+        instance,
+        ICON_RESOURCE_ID as *const u16,
+        IMAGE_ICON,
+        width,
+        height,
+        LR_DEFAULTCOLOR,
+    );
     if !icon.is_null() {
         return icon;
     }
-    LoadImageW(ptr::null_mut(), IDI_APPLICATION, IMAGE_ICON, width, height, LR_DEFAULTCOLOR)
+    LoadImageW(
+        ptr::null_mut(),
+        IDI_APPLICATION,
+        IMAGE_ICON,
+        width,
+        height,
+        LR_DEFAULTCOLOR,
+    )
 }
 
 /// 窗口过程：处理托盘回调、菜单命令与 Explorer 重启。
-unsafe extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn window_procedure(
+    window: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     // Explorer 重启后需要重新添加图标
     let taskbar_created = TASKBAR_CREATED.with(|slot| slot.get());
     if taskbar_created != 0 && message == taskbar_created {
@@ -301,7 +330,12 @@ unsafe fn show_menu(window: HWND) {
         return;
     }
     AppendMenuW(menu, MF_STRING, MENU_SHOW, to_wide("显示主窗口").as_ptr());
-    AppendMenuW(menu, MF_STRING, MENU_REFRESH, to_wide("刷新端口列表").as_ptr());
+    AppendMenuW(
+        menu,
+        MF_STRING,
+        MENU_REFRESH,
+        to_wide("刷新端口列表").as_ptr(),
+    );
     AppendMenuW(menu, MF_SEPARATOR, 0, ptr::null());
     AppendMenuW(menu, MF_STRING, MENU_EXIT, to_wide("退出").as_ptr());
 
@@ -309,7 +343,15 @@ unsafe fn show_menu(window: HWND) {
     GetCursorPos(&mut cursor);
     // TrackPopupMenu 要求窗口是前台窗口，否则菜单不会在点击别处时消失
     SetForegroundWindow(window);
-    TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN, cursor.x, cursor.y, 0, window, ptr::null());
+    TrackPopupMenu(
+        menu,
+        TPM_RIGHTBUTTON | TPM_BOTTOMALIGN,
+        cursor.x,
+        cursor.y,
+        0,
+        window,
+        ptr::null(),
+    );
     // 官方推荐的收尾动作，确保菜单正确关闭
     PostMessageW(window, WM_NULL, 0, 0);
     DestroyMenu(menu);

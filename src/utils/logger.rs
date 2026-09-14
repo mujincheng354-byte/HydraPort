@@ -99,7 +99,11 @@ fn open_log_file() -> Option<File> {
         .or_else(|| std::env::current_dir().ok())?;
     let directory = base.join("HydraPort");
     std::fs::create_dir_all(&directory).ok()?;
-    OpenOptions::new().create(true).append(true).open(directory.join("hydraport.log")).ok()
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(directory.join("hydraport.log"))
+        .ok()
 }
 
 /// 当前日志是否已启用；UI 用它提示用户去哪儿找日志。
@@ -118,7 +122,9 @@ mod tests {
         // 该测试只验证路径拼接规则，不依赖环境变量是否存在
         if let Some(path) = log_file_path() {
             assert!(path.ends_with("hydraport.log"));
-            assert!(path.parent().is_some_and(|parent| parent.ends_with("HydraPort")));
+            assert!(path
+                .parent()
+                .is_some_and(|parent| parent.ends_with("HydraPort")));
         }
     }
 }

@@ -18,11 +18,17 @@ impl PortQuery {
     /// 按关键字与精确端口号过滤，返回命中的下标；`exact_port` 为 `None` 时不限制端口号。
     ///
     /// 界面层只需要一份下标列表就能完成排序与绘制，避免每帧克隆整张表（§12）。
-    pub fn filter_indices(ports: &[PortInfo], keyword: &str, exact_port: Option<u16>) -> Vec<usize> {
+    pub fn filter_indices(
+        ports: &[PortInfo],
+        keyword: &str,
+        exact_port: Option<u16>,
+    ) -> Vec<usize> {
         ports
             .iter()
             .enumerate()
-            .filter(|(_, port)| Self::matches(port, keyword) && exact_port.is_none_or(|value| port.port == value))
+            .filter(|(_, port)| {
+                Self::matches(port, keyword) && exact_port.is_none_or(|value| port.port == value)
+            })
             .map(|(index, _)| index)
             .collect()
     }
@@ -72,8 +78,14 @@ mod tests {
     #[test]
     fn empty_keyword_matches_all() {
         let ports = sample_list();
-        assert_eq!(PortQuery::filter_indices(&ports, "", None).len(), ports.len());
-        assert_eq!(PortQuery::filter_indices(&ports, "   ", None).len(), ports.len());
+        assert_eq!(
+            PortQuery::filter_indices(&ports, "", None).len(),
+            ports.len()
+        );
+        assert_eq!(
+            PortQuery::filter_indices(&ports, "   ", None).len(),
+            ports.len()
+        );
     }
 
     /// 搜索：按进程名过滤，同一进程的多个端口应全部命中。
@@ -107,7 +119,10 @@ mod tests {
     #[test]
     fn exact_port_combines_with_keyword() {
         let ports = sample_list();
-        assert_eq!(PortQuery::filter_indices(&ports, "nginx", Some(8080)).len(), 1);
+        assert_eq!(
+            PortQuery::filter_indices(&ports, "nginx", Some(8080)).len(),
+            1
+        );
         assert!(PortQuery::filter_indices(&ports, "nginx", Some(3306)).is_empty());
     }
 

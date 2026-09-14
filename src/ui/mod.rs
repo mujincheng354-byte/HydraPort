@@ -23,7 +23,7 @@ use windows_sys::Win32::{
         Gdi::{CreateFontIndirectW, CreateSolidBrush, DeleteObject, HBRUSH, HFONT},
     },
     UI::{
-        Controls::{LVM_GETHEADER, SetWindowTheme},
+        Controls::{SetWindowTheme, LVM_GETHEADER},
         HiDpi::GetDpiForWindow,
         WindowsAndMessaging::{
             GetClientRect, GetWindowTextLengthW, GetWindowTextW, SendMessageW, SetWindowTextW,
@@ -97,7 +97,11 @@ pub(crate) fn set_control_text(window: HWND, text: &str) {
 /// 窗口所在显示器的 DPI；拿不到时按 96 处理。
 pub(crate) fn dpi_of(window: HWND) -> u32 {
     let dpi = unsafe { GetDpiForWindow(window) };
-    if dpi == 0 { 96 } else { dpi }
+    if dpi == 0 {
+        96
+    } else {
+        dpi
+    }
 }
 
 /// 把逻辑像素（96 DPI 下的值）换算成当前 DPI 的物理像素。
@@ -107,7 +111,9 @@ pub(crate) fn scale(value: i32, dpi: u32) -> i32 {
 
 /// 用给定字体测量文本宽度；工具栏靠它算控件尺寸，从而在任何 DPI 下都不裁字。
 pub(crate) fn text_width(window: HWND, font: HFONT, text: &str) -> i32 {
-    use windows_sys::Win32::Graphics::Gdi::{GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject};
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject,
+    };
     unsafe {
         let dc = GetDC(window);
         if dc.is_null() {
@@ -136,7 +142,13 @@ pub(crate) fn create_ui_font(dpi: u32) -> HFONT {
     unsafe {
         let mut metrics: NONCLIENTMETRICSW = std::mem::zeroed();
         metrics.cbSize = std::mem::size_of::<NONCLIENTMETRICSW>() as u32;
-        if SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, metrics.cbSize, &mut metrics as *mut _ as *mut _, 0) == 0 {
+        if SystemParametersInfoW(
+            SPI_GETNONCLIENTMETRICS,
+            metrics.cbSize,
+            &mut metrics as *mut _ as *mut _,
+            0,
+        ) == 0
+        {
             return ptr::null_mut();
         }
         // lfMessageFont 是按 96 DPI 给出的，需要按当前 DPI 缩放字高
@@ -184,11 +196,20 @@ pub(crate) fn apply_theme(window: HWND, dark: bool) {
     unsafe {
         // DWMWA_USE_IMMERSIVE_DARK_MODE = 20（Windows 10 1809 起）
         let value: i32 = if dark { 1 } else { 0 };
-        DwmSetWindowAttribute(window, 20, &value as *const _ as *const _, std::mem::size_of::<i32>() as u32);
+        DwmSetWindowAttribute(
+            window,
+            20,
+            &value as *const _ as *const _,
+            std::mem::size_of::<i32>() as u32,
+        );
     }
     dark_mode::allow_for_window(window, dark);
 
-    let list_theme = if dark { "DarkMode_Explorer" } else { "Explorer" };
+    let list_theme = if dark {
+        "DarkMode_Explorer"
+    } else {
+        "Explorer"
+    };
     let edit_theme = if dark { "DarkMode_CFD" } else { "Explorer" };
     for child in children_of(window) {
         let class = class_name_of(child);
