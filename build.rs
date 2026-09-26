@@ -63,17 +63,25 @@ fn find_resource_compiler() -> Option<PathBuf> {
         }
     }
 
-    // 同时覆盖 64 位与 32 位宿主：进程是 64 位的，优先 x64
+    // 同时覆盖 64 位与 32 位宿主：进程是 64 位的，优先 x64。
+    // 环境变量缺失时回退到标准安装路径——有些精简环境（如内置 Administrator 会话）
+    // 会把 ProgramFiles(x86) 清空，但 SDK 文件其实就在默认位置。
     let mut roots = Vec::new();
     for variable in ["ProgramFiles(x86)", "ProgramFiles"] {
         if let Some(root) = env::var_os(variable) {
-            roots.push(
-                PathBuf::from(root)
-                    .join("Windows Kits")
-                    .join("10")
-                    .join("bin"),
-            );
+            if !root.is_empty() {
+                roots.push(
+                    PathBuf::from(root)
+                        .join("Windows Kits")
+                        .join("10")
+                        .join("bin"),
+                );
+            }
         }
+    }
+    if roots.is_empty() {
+        roots.push(PathBuf::from(r"C:\Program Files (x86)\Windows Kits\10\bin"));
+        roots.push(PathBuf::from(r"C:\Program Files\Windows Kits\10\bin"));
     }
 
     let mut candidates = Vec::new();
