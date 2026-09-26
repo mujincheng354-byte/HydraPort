@@ -50,6 +50,8 @@ pub(crate) mod ids {
     /// 两个静态标签的 ID 只用于创建窗口，布局时靠句柄数组取回
     pub(crate) const SEARCH_LABEL: usize = 1011;
     pub(crate) const EXACT_LABEL: usize = 1012;
+    /// 「结束端口」：按精确端口输入框里的端口号结束占用该端口的进程
+    pub(crate) const KILL_PORT_BUTTON: usize = 1013;
 
     /// 「设置」下拉菜单
     pub(crate) const MENU_CLOSE_TO_TRAY: usize = 2001;

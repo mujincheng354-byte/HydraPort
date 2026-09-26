@@ -39,6 +39,7 @@ use windows_sys::Win32::{
 
 use crate::{
     app::PortManagerApp,
+    models::PortInfo,
     services::{PortQuery, TrayEvent},
     ui::{self, dialogs::DetailAction, ids, scale, to_wide, WM_TRAY_EVENT},
 };
@@ -341,6 +342,28 @@ fn kill_selection(app: &mut PortManagerApp) {
     }
 }
 
+/// 「结束端口」：按精确端口输入框里的端口号，结束占用该端口的全部进程。
+fn kill_by_port(app: &mut PortManagerApp) {
+    app.exact_port = ui::control_text(app.toolbar.exact);
+    let Some(port_number) = app.exact_port.trim().parse::<u16>().ok() else {
+        app.set_message("请先在「精确端口」输入端口号".to_owned());
+        return;
+    };
+    let hits: Vec<PortInfo> = PortQuery::find_by_port(&app.ports, port_number)
+        .into_iter()
+        .cloned()
+        .collect();
+    if hits.is_empty() {
+        app.set_message(format!("端口 {port_number} 当前没有被占用"));
+        return;
+    }
+    if ui::dialogs::confirm_kill(app, &hits) {
+        app.kill_ports(&hits);
+    } else {
+        app.set_message("已取消结束进程".to_owned());
+    }
+}
+
 /// 复制一段文本到剪贴板，并把结果写进状态栏。
 fn copy_text(app: &mut PortManagerApp, label: &str, text: &str) {
     let message = if crate::utils::clipboard::set_text(app.window, text) {
@@ -444,6 +467,7 @@ fn handle_command(app: &mut PortManagerApp, wparam: WPARAM) {
         }
         id if id == ids::REFRESH_BUTTON => app.refresh(),
         id if id == ids::EXPORT_BUTTON => app.export_csv(),
+        id if id == ids::KILL_PORT_BUTTON => kill_by_port(app),
         id if id == ids::KILL_BUTTON => kill_selection(app),
         id if id == ids::THEME_BUTTON => toggle_theme(app),
         id if id == ids::SETTINGS_BUTTON => ui::toolbar::show_settings_menu(app),

@@ -67,6 +67,7 @@ pub(crate) struct ToolbarControls {
     pub(crate) search: HWND,
     pub(crate) exact: HWND,
     pub(crate) query: HWND,
+    pub(crate) kill_port: HWND,
     pub(crate) refresh: HWND,
     pub(crate) export: HWND,
     pub(crate) kill: HWND,

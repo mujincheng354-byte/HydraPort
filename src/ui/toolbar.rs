@@ -49,7 +49,7 @@ struct Item {
 const SEARCH_LABEL: usize = 0;
 const EXACT_LABEL: usize = 1;
 
-const ITEMS: [Item; 10] = [
+const ITEMS: [Item; 11] = [
     Item {
         id: ids::SEARCH_LABEL,
         class: "Static",
@@ -82,6 +82,13 @@ const ITEMS: [Item; 10] = [
         id: ids::QUERY_BUTTON,
         class: "Button",
         text: "查询",
+        width: None,
+        right_aligned: false,
+    },
+    Item {
+        id: ids::KILL_PORT_BUTTON,
+        class: "Button",
+        text: "结束端口",
         width: None,
         right_aligned: false,
     },
@@ -188,11 +195,12 @@ pub(crate) fn create(parent: HWND) -> anyhow::Result<ToolbarControls> {
         search: handles[1],
         exact: handles[3],
         query: handles[4],
-        refresh: handles[5],
-        export: handles[6],
-        kill: handles[7],
-        settings: handles[8],
-        theme: handles[9],
+        kill_port: handles[5],
+        refresh: handles[6],
+        export: handles[7],
+        kill: handles[8],
+        settings: handles[9],
+        theme: handles[10],
         labels: [handles[0], handles[2]],
     })
 }
@@ -201,6 +209,7 @@ pub(crate) fn create(parent: HWND) -> anyhow::Result<ToolbarControls> {
 pub(crate) fn draw_button(app: &PortManagerApp, item: &DRAWITEMSTRUCT) -> bool {
     let is_toolbar_button = [
         app.toolbar.query,
+        app.toolbar.kill_port,
         app.toolbar.refresh,
         app.toolbar.export,
         app.toolbar.kill,
@@ -268,6 +277,7 @@ fn handles_of(app: &PortManagerApp) -> [HWND; ITEMS.len()] {
         bar.labels[EXACT_LABEL],
         bar.exact,
         bar.query,
+        bar.kill_port,
         bar.refresh,
         bar.export,
         bar.kill,
