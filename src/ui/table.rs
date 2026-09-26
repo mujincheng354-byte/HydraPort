@@ -17,10 +17,11 @@ use windows_sys::Win32::{
             LVCF_SUBITEM, LVCF_TEXT, LVCF_WIDTH, LVCOLUMNW, LVHITTESTINFO, LVHT_ONITEMICON,
             LVHT_ONITEMLABEL, LVHT_ONITEMSTATEICON, LVIF_STATE, LVIF_TEXT, LVIS_SELECTED, LVITEMW,
             LVM_DELETEALLITEMS, LVM_GETCOLUMNWIDTH, LVM_GETHEADER, LVM_GETNEXTITEM,
-            LVM_INSERTCOLUMNW, LVM_INSERTITEMW, LVM_SETCOLUMNWIDTH, LVM_SETEXTENDEDLISTVIEWSTYLE,
-            LVM_SETITEMSTATE, LVM_SETITEMTEXTW, LVM_SUBITEMHITTEST, LVNI_SELECTED,
-            LVSCW_AUTOSIZE_USEHEADER, LVS_EX_DOUBLEBUFFER, LVS_EX_FULLROWSELECT, LVS_EX_GRIDLINES,
-            LVS_REPORT, LVS_SHOWSELALWAYS, WC_LISTVIEWW,
+            LVM_INSERTCOLUMNW, LVM_INSERTITEMW, LVM_SETBKCOLOR, LVM_SETCOLUMNWIDTH,
+            LVM_SETEXTENDEDLISTVIEWSTYLE, LVM_SETITEMSTATE, LVM_SETITEMTEXTW, LVM_SETTEXTBKCOLOR,
+            LVM_SETTEXTCOLOR, LVM_SUBITEMHITTEST, LVNI_SELECTED, LVSCW_AUTOSIZE_USEHEADER,
+            LVS_EX_DOUBLEBUFFER, LVS_EX_FULLROWSELECT, LVS_EX_GRIDLINES, LVS_REPORT,
+            LVS_SHOWSELALWAYS, WC_LISTVIEWW,
         },
         WindowsAndMessaging::{
             CreateWindowExW, GetClientRect, SendMessageW, WM_GETFONT, WS_CHILD, WS_TABSTOP,
@@ -47,6 +48,9 @@ const COLUMNS: [(&str, i32, bool); 7] = [
     ("进程名", LVCFMT_LEFT, true),
     ("进程路径", LVCFMT_LEFT, true),
 ];
+
+/// 路径列在窄窗口下仍保留的最小宽度；其余空间全部随窗口宽度变化。
+const PATH_COLUMN_MIN_WIDTH: isize = 160;
 
 /// 创建列表视图并插入表头。
 ///
@@ -92,15 +96,42 @@ pub(crate) fn create(parent: HWND) -> anyhow::Result<HWND> {
         column.cx = 120;
         column.iSubItem = index as i32;
         column.pszText = text.as_mut_ptr();
-        // 插列失败只影响这一列（表头会少一格），不值得让整个程序起不来
+        // 插列失败只影响这一列（表头会少一格），不值得让整个程序起不来。
+        // LVM_INSERTCOLUMN 成功时返回新列索引（第一列就是 0），失败返回 -1；
+        // 因此判失败要看 -1，而不是 0——否则第一列「端口」永远被误报为失败。
         let inserted =
             unsafe { SendMessageW(list, LVM_INSERTCOLUMNW, index, &column as *const _ as isize) };
-        if inserted == 0 {
+        if inserted == -1 {
             log::warn!("插入表格列「{title}」失败");
         }
     }
 
+    // 设置列表视图的背景色和文字色，避免深色主题下空白区域显示白色
+    set_list_colors(list, false);
+
     Ok(list)
+}
+
+/// 设置列表视图的背景色、文字背景色和文字颜色。
+///
+/// `SysListView32` 的背景色不跟 uxtheme 走，必须用 `LVM_SETBKCOLOR` 显式设置；
+/// 否则拉伸窗口时，行下方的空白区域会露出系统默认的白色。
+pub(crate) fn set_list_colors(list: HWND, dark: bool) {
+    let bg = if dark {
+        crate::ui::COLOR_DARK_BG
+    } else {
+        crate::ui::COLOR_LIGHT_BG
+    };
+    let text = if dark {
+        crate::ui::COLOR_DARK_TEXT
+    } else {
+        crate::ui::COLOR_LIGHT_TEXT
+    };
+    unsafe {
+        SendMessageW(list, LVM_SETBKCOLOR, 0, bg as isize);
+        SendMessageW(list, LVM_SETTEXTBKCOLOR, 0, bg as isize);
+        SendMessageW(list, LVM_SETTEXTCOLOR, 0, text as isize);
+    }
 }
 
 impl PortManagerApp {
@@ -282,34 +313,25 @@ impl PortManagerApp {
         self.stretch_last_column();
     }
 
-    /// 把最后一列拉到表格右边界，避免右侧留白。
+    /// 让最后一列随表格宽度伸缩，避免右侧留白或窗口缩小时保留旧宽度。
     ///
     /// 之所以独立成一个方法，是因为它必须在**控件尺寸确定之后**补跑一次：启动时第一次
     /// 填表发生在布局之前（`PortManagerApp::new` 里就 refresh 了），那一刻列表视图还是
-    /// 创建时的 0 宽，`LVSCW_AUTOSIZE_USEHEADER` 算出的「剩余宽度」没有意义，最后一列
-    /// 只会拿到内容宽度；而列表视图并不会因为事后被 `MoveWindow` 放大就重新分配列宽，
-    /// 于是这块空白会一直留到用户手动拖列为止。所以 `layout()` 每次排完版都要再调一次。
+    /// 创建时的 0 宽，`LVSCW_AUTOSIZE_USEHEADER` 算出的「剩余宽度」没有意义。这里不再
+    /// 只在有空白时扩展：每次都按其余六列的当前宽度重新设置路径列，窗口放大与缩小都能
+    /// 同步适配，而用户手动调整前六列后的剩余空间也会即时生效。
     pub(crate) fn stretch_last_column(&self) {
         let (client_width, _) = crate::ui::client_size(self.list);
         if client_width <= 0 {
             return;
         }
-        let mut total = 0;
-        for index in 0..COLUMNS.len() {
-            total += unsafe { SendMessageW(self.list, LVM_GETCOLUMNWIDTH, index, 0) };
-        }
-        if total >= client_width as isize {
-            return;
-        }
         let last = COLUMNS.len() - 1;
+        let fixed_width = (0..last)
+            .map(|index| unsafe { SendMessageW(self.list, LVM_GETCOLUMNWIDTH, index, 0) })
+            .sum::<isize>();
+        let width = (client_width as isize - fixed_width).max(PATH_COLUMN_MIN_WIDTH);
         unsafe {
-            let current = SendMessageW(self.list, LVM_GETCOLUMNWIDTH, last, 0);
-            SendMessageW(
-                self.list,
-                LVM_SETCOLUMNWIDTH,
-                last,
-                current + (client_width as isize - total),
-            );
+            SendMessageW(self.list, LVM_SETCOLUMNWIDTH, last, width);
         }
     }
 

@@ -6,13 +6,18 @@ use std::ptr;
 
 use windows_sys::Win32::{
     Foundation::HWND,
+    Graphics::Gdi::{
+        CreateSolidBrush, DrawTextW, FillRect, FrameRect, SetBkMode, SetTextColor, DT_CENTER,
+        DT_END_ELLIPSIS, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, TRANSPARENT,
+    },
     System::LibraryLoader::GetModuleHandleW,
     UI::{
+        Controls::DRAWITEMSTRUCT,
         Input::KeyboardAndMouse::EnableWindow,
         WindowsAndMessaging::{
             AppendMenuW, CheckMenuItem, CreatePopupMenu, CreateWindowExW, DestroyMenu,
             EnableMenuItem, GetWindowRect, MoveWindow, PostMessageW, SetForegroundWindow,
-            TrackPopupMenu, BS_PUSHBUTTON, ES_AUTOHSCROLL, MF_CHECKED, MF_GRAYED, MF_SEPARATOR,
+            TrackPopupMenu, BS_OWNERDRAW, ES_AUTOHSCROLL, MF_CHECKED, MF_GRAYED, MF_SEPARATOR,
             MF_STRING, TPM_RETURNCMD, TPM_RIGHTALIGN, WM_NULL, WS_CHILD, WS_EX_CLIENTEDGE,
             WS_TABSTOP, WS_VISIBLE,
         },
@@ -144,7 +149,8 @@ pub(crate) fn create(parent: HWND) -> anyhow::Result<ToolbarControls> {
                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL as u32,
                 WS_EX_CLIENTEDGE,
             ),
-            "Button" => (WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON as u32, 0),
+            // 原生按钮没有可靠的深色皮肤；改成自绘后深浅主题可保持统一配色。
+            "Button" => (WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW as u32, 0),
             // SS_LEFT == 0，静态控件保持默认左对齐
             _ => (WS_CHILD | WS_VISIBLE, 0),
         };
@@ -189,6 +195,68 @@ pub(crate) fn create(parent: HWND) -> anyhow::Result<ToolbarControls> {
         theme: handles[9],
         labels: [handles[0], handles[2]],
     })
+}
+
+/// 绘制工具栏按钮；返回 `true` 表示已接管该控件的 `WM_DRAWITEM`。
+pub(crate) fn draw_button(app: &PortManagerApp, item: &DRAWITEMSTRUCT) -> bool {
+    let is_toolbar_button = [
+        app.toolbar.query,
+        app.toolbar.refresh,
+        app.toolbar.export,
+        app.toolbar.kill,
+        app.toolbar.settings,
+        app.toolbar.theme,
+    ]
+    .contains(&item.hwndItem);
+    if !is_toolbar_button || item.hDC.is_null() {
+        return false;
+    }
+
+    // ODS_SELECTED = 0x0001，ODS_DISABLED = 0x0004。
+    let pressed = item.itemState & 0x0001 != 0;
+    let disabled = item.itemState & 0x0004 != 0;
+    let (face, border, text) = if app.dark_mode {
+        (
+            if pressed { 0x0040_4040 } else { 0x002A_2A2A },
+            0x0050_5050,
+            if disabled {
+                0x0080_8080
+            } else {
+                crate::ui::COLOR_DARK_TEXT
+            },
+        )
+    } else {
+        (
+            crate::ui::COLOR_LIGHT_BG,
+            0x00D0_D0D0,
+            if disabled {
+                0x0080_8080
+            } else {
+                crate::ui::COLOR_LIGHT_TEXT
+            },
+        )
+    };
+    let face_brush = unsafe { CreateSolidBrush(face) };
+    let border_brush = unsafe { CreateSolidBrush(border) };
+    let mut rect = item.rcItem;
+    let text_value = crate::ui::control_text(item.hwndItem);
+    let mut text_wide = to_wide(&text_value);
+    unsafe {
+        FillRect(item.hDC, &rect, face_brush);
+        FrameRect(item.hDC, &rect, border_brush);
+        SetBkMode(item.hDC, TRANSPARENT as i32);
+        SetTextColor(item.hDC, text);
+        DrawTextW(
+            item.hDC,
+            text_wide.as_mut_ptr(),
+            -1,
+            &mut rect,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX,
+        );
+    }
+    crate::ui::delete_object(face_brush as *mut _);
+    crate::ui::delete_object(border_brush as *mut _);
+    true
 }
 
 /// 按 [`ITEMS`] 的顺序取出全部句柄；布局只认这一个数组，不依赖子窗口的 Z 序。

@@ -9,8 +9,8 @@ use windows_sys::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
     Graphics::Gdi::{
         FillRect, InvalidateRect, RedrawWindow, ScreenToClient, SetBkColor, SetBkMode,
-        SetTextColor, UpdateWindow, COLOR_WINDOW, HBRUSH, HDC, RDW_ALLCHILDREN, RDW_ERASE,
-        RDW_INVALIDATE, TRANSPARENT,
+        SetTextColor, UpdateWindow, HBRUSH, HDC, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE,
+        TRANSPARENT,
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::{
@@ -31,7 +31,8 @@ use windows_sys::Win32::{
             LR_DEFAULTSIZE, LR_SHARED, MINMAXINFO, MSG, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER,
             SW_HIDE, SW_RESTORE, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLOREDIT,
             WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ERASEBKGND,
-            WM_GETMINMAXINFO, WM_NCDESTROY, WM_NOTIFY, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+            WM_GETMINMAXINFO, WM_NCDESTROY, WM_NOTIFY, WM_SIZE, WNDCLASSW, WS_CLIPCHILDREN,
+            WS_OVERLAPPEDWINDOW,
         },
     },
 };
@@ -132,6 +133,8 @@ pub(crate) fn run() -> anyhow::Result<()> {
 
         let mut window_class: WNDCLASSW = std::mem::zeroed();
         window_class.style = CS_HREDRAW | CS_VREDRAW;
+        // hbrBackground 设为 NULL：背景由 WM_ERASEBKGND 自己填主题色，
+        // 留着系统画刷会在拉伸窗口时闪出白色残影。
         window_class.lpfnWndProc = Some(window_procedure);
         window_class.hInstance = instance;
         window_class.hIcon = LoadImageW(
@@ -143,14 +146,16 @@ pub(crate) fn run() -> anyhow::Result<()> {
             LR_DEFAULTSIZE | LR_SHARED,
         );
         window_class.hCursor = LoadCursorW(ptr::null_mut(), IDC_ARROW);
-        window_class.hbrBackground = (COLOR_WINDOW + 1) as HBRUSH;
+        window_class.hbrBackground = 0 as HBRUSH;
         window_class.lpszClassName = class_name.as_ptr();
         if RegisterClassW(&window_class) == 0 {
             anyhow::bail!("注册主窗口类失败");
         }
 
         // 先按 96 DPI 的逻辑尺寸建窗，拿到窗口句柄后立刻按实际 DPI 调整
-        let style = WS_OVERLAPPEDWINDOW;
+        // WS_CLIPCHILDREN 阻止父窗口在子控件区域上画背景，
+        // 拉伸时子控件占过的区域不会被系统先填白再由子控件重绘。
+        let style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
         let mut frame = RECT {
             left: 0,
             top: 0,
@@ -208,7 +213,8 @@ pub(crate) fn run() -> anyhow::Result<()> {
                 frame.bottom - frame.top,
                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
             );
-            layout(app);
+            let (w, h) = ui::client_size(app.window);
+            layout(app, w, h);
         }
 
         ShowWindow(window, SW_SHOW);
@@ -245,8 +251,10 @@ pub(crate) fn run() -> anyhow::Result<()> {
 }
 
 /// 按客户区尺寸重排工具栏、表格与状态栏。
-fn layout(app: &PortManagerApp) {
-    let (width, height) = ui::client_size(app.window);
+///
+/// `width` / `height` 是客户区的新尺寸；由 `WM_SIZE` 的 `lparam` 解出后传入，
+/// 避免 `GetClientRect` 在窗口尚未完成重排时返回旧值。
+fn layout(app: &PortManagerApp, width: i32, height: i32) {
     if width <= 0 || height <= 0 {
         return;
     }
@@ -263,6 +271,12 @@ fn layout(app: &PortManagerApp) {
     unsafe { MoveWindow(app.list, 0, toolbar_height, width, list_height, 1) };
     // 表格宽度刚刚才定下来，最后一列要按新宽度重新拉满；列表视图自己不会做这件事
     app.stretch_last_column();
+
+    // 显式让所有子控件重绘，确保拉伸时内容跟手
+    unsafe {
+        InvalidateRect(app.list, ptr::null(), 1);
+        InvalidateRect(app.status, ptr::null(), 1);
+    }
 }
 
 impl PortManagerApp {
@@ -508,13 +522,17 @@ unsafe extern "system" fn window_procedure(
 
     // 窗口创建期间 GWLP_USERDATA 尚未写入，这段消息交给系统默认处理；
     // 重入的情况同样在这里挡住，见 app_mut 的说明
-    let Some((app, _borrow)) = app_mut(window) else {
+    let Some((app, borrow)) = app_mut(window) else {
         return DefWindowProcW(window, message, wparam, lparam);
     };
 
     match message {
         WM_SIZE => {
-            layout(app);
+            // lparam 低位 = 客户区宽度，高位 = 客户区高度；用它而不是
+            // GetClientRect，后者在窗口重排期间返回的还是旧值。
+            let width = (lparam & 0xFFFF) as i32;
+            let height = ((lparam >> 16) & 0xFFFF) as i32;
+            layout(app, width, height);
             0
         }
         WM_GETMINMAXINFO => {
@@ -546,7 +564,8 @@ unsafe extern "system" fn window_procedure(
             let previous = app.font;
             app.font = ui::create_ui_font(dpi);
             ui::apply_font(window, app.font);
-            layout(app);
+            let (w, h) = ui::client_size(app.window);
+            layout(app, w, h);
             // 布局算完才能删旧字体：text_width 用的就是它
             ui::delete_object(previous as *mut _);
             0
@@ -566,14 +585,19 @@ unsafe extern "system" fn window_procedure(
             0
         }
         WM_DRAWITEM => {
-            // 深色主题下状态栏分段是自绘的，这里是唯一能给它上色的地方
             let item = lparam as *const DRAWITEMSTRUCT;
             if let Some(item) = item.as_ref() {
+                if ui::toolbar::draw_button(app, item) {
+                    return 1;
+                }
+                // 状态栏的分段是自绘的：系统控件没有可用的深色文字色，
+                // 只能自己填底色再画字
                 if item.hwndItem == app.status {
                     ui::status_bar::draw_item(app, item);
+                    return 1;
                 }
             }
-            1
+            0
         }
         WM_ERASEBKGND => {
             // 背景自己填，窗口类里的系统画刷不随主题变化
@@ -619,6 +643,15 @@ unsafe extern "system" fn window_procedure(
             PostQuitMessage(0);
             0
         }
-        _ => DefWindowProcW(window, message, wparam, lparam),
+        _ => {
+            // 交给系统之前必须先把借用还回去：`DefWindowProcW` 自己也会同步派发下一层
+            // 消息——外部改变窗口大小时，正是由它处理 `WM_WINDOWPOSCHANGING` 并带出
+            // `WM_SIZE`。握着借用调用它，那条 `WM_SIZE` 就会被重入保护按默认处理，
+            // `layout()` 从此再也不会执行：窗口放大缩小都不重排控件，表格末列自然
+            // 「只会扩展、不会回收」。`app` 在本分支之后不再使用，重入的下一层拿到的是
+            // 一个全新的借用。
+            drop(borrow);
+            DefWindowProcW(window, message, wparam, lparam)
+        }
     }
 }

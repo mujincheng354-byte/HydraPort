@@ -213,6 +213,12 @@ pub(crate) fn apply_theme(window: HWND, dark: bool) {
     let edit_theme = if dark { "DarkMode_CFD" } else { "Explorer" };
     for child in children_of(window) {
         let class = class_name_of(child);
+        if class == "msctls_statusbar32" {
+            // 状态栏要单独走：给它套主题反而会让它忽略颜色消息（见 set_colors 的说明），
+            // 所以这里不参与下面的主题名分配，由 set_colors 自己摘主题再上色
+            status_bar::set_colors(child, dark);
+            continue;
+        }
         let theme = match class.as_str() {
             "SysListView32" => {
                 // 表头是列表视图的子窗口，不单独换主题的话它会留成一道白条。
@@ -225,9 +231,10 @@ pub(crate) fn apply_theme(window: HWND, dark: bool) {
                 }
                 table::install_header_subclass(child);
                 table::set_header_dark(child, dark);
+                // 列表视图背景色不跟 uxtheme 走，必须显式设置
+                table::set_list_colors(child, dark);
                 list_theme
             }
-            "msctls_statusbar32" => list_theme,
             "Edit" => edit_theme,
             // 按钮没有官方深色主题，保持系统默认外观
             _ => continue,
